@@ -9,6 +9,7 @@ import {
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { useRouter, useSegments } from 'expo-router';
+import { hasCompletedOnboarding } from '../utils/profile-storage';
 
 interface AuthError {
   message: string;
@@ -58,14 +59,30 @@ export function FirebaseAuthProvider({ children, routes }: FirebaseAuthProviderP
     if (isInitializing) return;
 
     const inAuthGroup = segments[0] === '(auth)';
+    const inOnboardingGroup = segments[0] === 'onboarding';
 
-    if (!user && !inAuthGroup) {
-      // User is not authenticated and not in auth screens
-      router.replace(routes.login as any);
-    } else if (user && inAuthGroup) {
-      // User is authenticated but still in auth screens
-      router.replace(routes.afterLogin as any);
+    async function checkAndNavigate() {
+      if (!user && !inAuthGroup) {
+        // User is not authenticated and not in auth screens
+        router.replace(routes.login as any);
+      } else if (user && inAuthGroup) {
+        // User is authenticated but still in auth screens, check onboarding
+        const completed = await hasCompletedOnboarding();
+        if (!completed) {
+          router.replace('/onboarding' as any);
+        } else {
+          router.replace(routes.afterLogin as any);
+        }
+      } else if (user && !inOnboardingGroup) {
+        // User is authenticated and not in onboarding, check if they need to complete it
+        const completed = await hasCompletedOnboarding();
+        if (!completed) {
+          router.replace('/onboarding' as any);
+        }
+      }
     }
+
+    checkAndNavigate();
   }, [user, segments, isInitializing]);
 
   const handleSignInWithEmail = async (email: string, password: string) => {
@@ -98,6 +115,7 @@ export function FirebaseAuthProvider({ children, routes }: FirebaseAuthProviderP
         daily_calorie_goal: 2500,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        onboarding_completed: false,
       });
 
       setUser(newUser);
