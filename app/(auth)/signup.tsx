@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Link } from 'expo-router';
-import { useAuth } from '@fastshot/auth';
+import { useFirebaseAuth } from '../../lib/firebase-auth-provider';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Colors, Fonts, Spacing, BorderRadius } from '../../constants/theme';
@@ -22,7 +22,7 @@ export default function SignUpScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const { signUpWithEmail, isLoading, pendingEmailVerification } = useAuth();
+  const { signUpWithEmail, isLoading } = useFirebaseAuth();
 
   const handleSignUp = async () => {
     if (!email.trim() || !password.trim() || !confirmPassword.trim()) {
@@ -44,37 +44,8 @@ export default function SignUpScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
 
-    const result = await signUpWithEmail(email, password);
-    if (result?.emailConfirmationRequired) {
-      Alert.alert(
-        'Check Your Email',
-        `A verification link has been sent to ${result.email}. Please verify your email to continue.`
-      );
-    }
+    await signUpWithEmail(email, password);
   };
-
-  if (pendingEmailVerification) {
-    return (
-      <View style={styles.container}>
-        <StatusBar style="light" />
-        <View style={styles.successContainer}>
-          <View style={styles.successIcon}>
-            <Ionicons name="mail" size={64} color={Colors.accent} />
-          </View>
-          <Text style={styles.successTitle}>Check Your Email</Text>
-          <Text style={styles.successText}>
-            We&apos;ve sent a verification link to your email address. Please click the link to
-            activate your account.
-          </Text>
-          <Link href="/(auth)/login" asChild>
-            <TouchableOpacity style={styles.backButton}>
-              <Text style={styles.backButtonText}>BACK TO SIGN IN</Text>
-            </TouchableOpacity>
-          </Link>
-        </View>
-      </View>
-    );
-  }
 
   return (
     <KeyboardAvoidingView
@@ -295,47 +266,5 @@ const styles = StyleSheet.create({
   linkTextBold: {
     color: Colors.accent,
     ...Fonts.heading,
-  },
-  successContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: Spacing.lg,
-  },
-  successIcon: {
-    width: 128,
-    height: 128,
-    borderRadius: BorderRadius.full,
-    backgroundColor: `${Colors.accent}20`,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.xl,
-  },
-  successTitle: {
-    fontSize: 28,
-    color: Colors.textPrimary,
-    ...Fonts.heading,
-    marginBottom: Spacing.md,
-    textAlign: 'center',
-  },
-  successText: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-    ...Fonts.body,
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: Spacing.xxl,
-  },
-  backButton: {
-    backgroundColor: Colors.accent,
-    borderRadius: BorderRadius.full,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.xl,
-  },
-  backButtonText: {
-    fontSize: 14,
-    color: Colors.background,
-    ...Fonts.heading,
-    letterSpacing: 1,
   },
 });

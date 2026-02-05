@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Link } from 'expo-router';
-import { useAuth } from '@fastshot/auth';
+import { useFirebaseAuth } from '../../lib/firebase-auth-provider';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Colors, Fonts, Spacing, BorderRadius } from '../../constants/theme';
@@ -21,7 +21,7 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const { signInWithEmail, isLoading, error } = useAuth();
+  const { signInWithEmail, isLoading, error } = useFirebaseAuth();
 
   const handleEmailLogin = async () => {
     if (!email.trim() || !password.trim()) {

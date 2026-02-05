@@ -19,7 +19,7 @@ import { useTextGeneration, useImageAnalysis } from '@fastshot/ai';
 import * as Haptics from 'expo-haptics';
 import { Colors, Fonts, Spacing, BorderRadius } from '../constants/theme';
 import { MealType } from '../types/nutrition';
-import { addMealToSupabase } from '../utils/supabase-storage';
+import { addMealToFirestore } from '../utils/firebase-storage';
 
 interface LogMealModalProps {
   visible: boolean;
@@ -236,7 +236,7 @@ export default function LogMealModal({ visible, mealType, onClose, onSave }: Log
     }
 
     try {
-      const result = await addMealToSupabase({
+      const result = await addMealToFirestore({
         meal_type: mealType,
         description: mealDescription,
         calories: nutritionData.calories,

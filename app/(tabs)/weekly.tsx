@@ -9,15 +9,15 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useAuth } from '@fastshot/auth';
+import { useFirebaseAuth } from '../../lib/firebase-auth-provider';
 import { Colors, Fonts, Spacing, BorderRadius } from '../../constants/theme';
 import WeeklyChart from '../../components/WeeklyChart';
 import { WeeklySummary } from '../../types/activity';
-import { getWeeklySummaryFromSupabase } from '../../utils/supabase-storage';
+import { getWeeklySummaryFromFirestore } from '../../utils/firebase-storage';
 
 export default function WeeklyScreen() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user } = useFirebaseAuth();
   const [weeklySummary, setWeeklySummary] = useState<WeeklySummary>({
     totalCalories: 0,
     bestDay: null,
@@ -27,7 +27,7 @@ export default function WeeklyScreen() {
 
   const loadData = async () => {
     try {
-      const summary = await getWeeklySummaryFromSupabase();
+      const summary = await getWeeklySummaryFromFirestore();
       setWeeklySummary(summary);
     } catch (error) {
       console.error('Error loading weekly summary:', error);

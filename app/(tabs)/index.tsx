@@ -12,20 +12,20 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
-import { useAuth } from '@fastshot/auth';
+import { useFirebaseAuth } from '../../lib/firebase-auth-provider';
 import { Colors, Fonts, Spacing, BorderRadius } from '../../constants/theme';
 import ActivityCard from '../../components/ActivityCard';
 import LogActivityModal from '../../components/LogActivityModal';
 import { Activity, ActivityType } from '../../types/activity';
 import { EnergyBalance } from '../../types/nutrition';
 import {
-  getTodayActivitiesFromSupabase,
-  addActivityToSupabase,
-  getEnergyBalanceFromSupabase,
-} from '../../utils/supabase-storage';
+  getTodayActivitiesFromFirestore,
+  addActivityToFirestore,
+  getEnergyBalanceFromFirestore,
+} from '../../utils/firebase-storage';
 
 export default function HomeScreen() {
-  const { user } = useAuth();
+  const { user } = useFirebaseAuth();
   const [modalVisible, setModalVisible] = useState(false);
   const [todayActivities, setTodayActivities] = useState<Activity[]>([]);
   const [energyBalance, setEnergyBalance] = useState<EnergyBalance>({
@@ -39,8 +39,8 @@ export default function HomeScreen() {
   const loadData = async () => {
     try {
       const [todaySummary, balance] = await Promise.all([
-        getTodayActivitiesFromSupabase(),
-        getEnergyBalanceFromSupabase(),
+        getTodayActivitiesFromFirestore(),
+        getEnergyBalanceFromFirestore(),
       ]);
 
       setTodayActivities(todaySummary.activities);
@@ -78,7 +78,7 @@ export default function HomeScreen() {
     calories: number
   ) => {
     try {
-      await addActivityToSupabase({
+      await addActivityToFirestore({
         type,
         duration,
         intensity,

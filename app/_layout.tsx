@@ -3,8 +3,7 @@ import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
-import { AuthProvider } from '@fastshot/auth';
-import { supabase } from '../lib/supabase';
+import { FirebaseAuthProvider } from '../lib/firebase-auth-provider';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -25,8 +24,7 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthProvider
-      supabaseClient={supabase}
+    <FirebaseAuthProvider
       routes={{
         login: '/(auth)/login',
         afterLogin: '/(tabs)',
@@ -38,6 +36,6 @@ export default function RootLayout() {
         <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
         <Stack.Screen name="index" options={{ headerShown: false }} />
       </Stack>
-    </AuthProvider>
+    </FirebaseAuthProvider>
   );
 }

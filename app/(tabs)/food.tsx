@@ -14,7 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors, Fonts, Spacing, BorderRadius } from '../../constants/theme';
 import { DailyNutritionSummary, MealType } from '../../types/nutrition';
-import { getTodayMealsFromSupabase } from '../../utils/supabase-storage';
+import { getTodayMealsFromFirestore } from '../../utils/firebase-storage';
 import MacroProgressBar from '../../components/MacroProgressBar';
 import MealCard from '../../components/MealCard';
 import LogMealModal from '../../components/LogMealModal';
@@ -40,7 +40,7 @@ export default function FoodScreen() {
 
   const loadData = async () => {
     try {
-      const summary = await getTodayMealsFromSupabase();
+      const summary = await getTodayMealsFromFirestore();
       setNutritionSummary(summary);
     } catch (error) {
       console.error('Error loading nutrition data:', error);
