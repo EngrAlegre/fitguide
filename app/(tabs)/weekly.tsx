@@ -9,13 +9,15 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { useAuth } from '@fastshot/auth';
 import { Colors, Fonts, Spacing, BorderRadius } from '../../constants/theme';
 import WeeklyChart from '../../components/WeeklyChart';
 import { WeeklySummary } from '../../types/activity';
-import { getWeeklySummary } from '../../utils/storage';
+import { getWeeklySummaryFromSupabase } from '../../utils/supabase-storage';
 
 export default function WeeklyScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const [weeklySummary, setWeeklySummary] = useState<WeeklySummary>({
     totalCalories: 0,
     bestDay: null,
@@ -25,7 +27,7 @@ export default function WeeklyScreen() {
 
   const loadData = async () => {
     try {
-      const summary = await getWeeklySummary();
+      const summary = await getWeeklySummaryFromSupabase();
       setWeeklySummary(summary);
     } catch (error) {
       console.error('Error loading weekly summary:', error);
@@ -33,14 +35,18 @@ export default function WeeklyScreen() {
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (user) {
+      loadData();
+    }
+  }, [user]);
 
   // Refresh when screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      loadData();
-    }, [])
+      if (user) {
+        loadData();
+      }
+    }, [user])
   );
 
   const onRefresh = async () => {
