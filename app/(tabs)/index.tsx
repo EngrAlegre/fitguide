@@ -12,6 +12,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import { useFirebaseAuth } from '../../lib/firebase-auth-provider';
 import { Colors, Fonts, Spacing, BorderRadius } from '../../constants/theme';
 import ActivityCard from '../../components/ActivityCard';
@@ -26,6 +27,7 @@ import {
 
 export default function HomeScreen() {
   const { user } = useFirebaseAuth();
+  const router = useRouter();
   const [modalVisible, setModalVisible] = useState(false);
   const [todayActivities, setTodayActivities] = useState<Activity[]>([]);
   const [energyBalance, setEnergyBalance] = useState<EnergyBalance>({
@@ -103,6 +105,13 @@ export default function HomeScreen() {
     setModalVisible(true);
   };
 
+  const handleProfilePress = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    router.push('/(tabs)/profile');
+  };
+
   const isFirstTime = todayActivities.length === 0 && energyBalance.caloriesIn === 0;
 
   return (
@@ -111,8 +120,15 @@ export default function HomeScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.logo}>FITGUIDE</Text>
-        <Text style={styles.subtitle}>Home Workouts • Budget Nutrition</Text>
+        <View style={styles.headerContent}>
+          <View style={styles.headerText}>
+            <Text style={styles.logo}>FITGUIDE</Text>
+            <Text style={styles.subtitle}>Home Workouts • Budget Nutrition</Text>
+          </View>
+          <TouchableOpacity style={styles.profileButton} onPress={handleProfilePress}>
+            <Ionicons name="person-circle-outline" size={32} color={Colors.accent} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -256,7 +272,18 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.xxl + 20,
     paddingBottom: Spacing.lg,
     paddingHorizontal: Spacing.lg,
+  },
+  headerContent: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerText: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  profileButton: {
+    padding: Spacing.xs,
   },
   logo: {
     fontSize: 28,
