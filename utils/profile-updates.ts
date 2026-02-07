@@ -72,11 +72,14 @@ export async function updateProfileMetrics(updates: {
 }): Promise<void> {
   const user = auth.currentUser;
   if (!user) {
+    console.error('updateProfileMetrics: No authenticated user');
     throw new Error('No authenticated user');
   }
 
+  console.log('updateProfileMetrics: Fetching current profile for user:', user.uid);
   const profile = await getUserProfile();
   if (!profile) {
+    console.error('updateProfileMetrics: Profile not found for user:', user.uid);
     throw new Error('Profile not found');
   }
 
@@ -102,10 +105,18 @@ export async function updateProfileMetrics(updates: {
       });
 
       updateData.daily_calorie_goal = newCalorieGoal;
+      console.log('updateProfileMetrics: Recalculated calorie goal:', newCalorieGoal);
     }
   }
 
-  await updateDoc(doc(db, 'user_profiles', user.uid), updateData);
+  console.log('updateProfileMetrics: Updating profile with data:', updateData);
+  try {
+    await updateDoc(doc(db, 'user_profiles', user.uid), updateData);
+    console.log('updateProfileMetrics: Successfully updated profile');
+  } catch (error) {
+    console.error('updateProfileMetrics: Failed to update profile:', error);
+    throw error;
+  }
 }
 
 /**
@@ -114,11 +125,14 @@ export async function updateProfileMetrics(updates: {
 export async function updateActivityLevel(activityLevel: ActivityLevel): Promise<void> {
   const user = auth.currentUser;
   if (!user) {
+    console.error('updateActivityLevel: No authenticated user');
     throw new Error('No authenticated user');
   }
 
+  console.log('updateActivityLevel: Fetching current profile for user:', user.uid);
   const profile = await getUserProfile();
   if (!profile) {
+    console.error('updateActivityLevel: Profile not found for user:', user.uid);
     throw new Error('Profile not found');
   }
 
@@ -145,9 +159,17 @@ export async function updateActivityLevel(activityLevel: ActivityLevel): Promise
     });
 
     updateData.daily_calorie_goal = newCalorieGoal;
+    console.log('updateActivityLevel: Recalculated calorie goal:', newCalorieGoal);
   }
 
-  await updateDoc(doc(db, 'user_profiles', user.uid), updateData);
+  console.log('updateActivityLevel: Updating profile with data:', updateData);
+  try {
+    await updateDoc(doc(db, 'user_profiles', user.uid), updateData);
+    console.log('updateActivityLevel: Successfully updated profile');
+  } catch (error) {
+    console.error('updateActivityLevel: Failed to update profile:', error);
+    throw error;
+  }
 }
 
 /**
@@ -156,13 +178,23 @@ export async function updateActivityLevel(activityLevel: ActivityLevel): Promise
 export async function updateFinancialStatus(financialStatus: FinancialStatus): Promise<void> {
   const user = auth.currentUser;
   if (!user) {
+    console.error('updateFinancialStatus: No authenticated user');
     throw new Error('No authenticated user');
   }
 
-  await updateDoc(doc(db, 'user_profiles', user.uid), {
+  const updateData = {
     financialStatus,
     updated_at: new Date().toISOString(),
-  });
+  };
+
+  console.log('updateFinancialStatus: Updating profile with data:', updateData);
+  try {
+    await updateDoc(doc(db, 'user_profiles', user.uid), updateData);
+    console.log('updateFinancialStatus: Successfully updated profile');
+  } catch (error) {
+    console.error('updateFinancialStatus: Failed to update profile:', error);
+    throw error;
+  }
 }
 
 /**

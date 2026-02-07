@@ -36,6 +36,7 @@ import { updatePassword } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 
 type EditMode = 'age' | 'weight' | 'height' | 'activityLevel' | 'financialStatus' | null;
+type SavingField = 'age' | 'weight' | 'height' | 'activityLevel' | 'financialStatus' | null;
 
 export default function ProfileScreen() {
   const { user, signOut } = useFirebaseAuth();
@@ -46,6 +47,8 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState<EditMode>(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [savingField, setSavingField] = useState<SavingField>(null);
+  const [savedField, setSavedField] = useState<SavingField>(null);
 
   // Temporary edit values
   const [tempAge, setTempAge] = useState('');
@@ -109,16 +112,24 @@ export default function ProfileScreen() {
       return;
     }
 
+    setSavingField('age');
     try {
       await updateProfileMetrics({ age });
       await loadProfile();
       setEditMode(null);
+      setSavingField(null);
+      setSavedField('age');
+
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
+
+      // Clear saved indicator after 2 seconds
+      setTimeout(() => setSavedField(null), 2000);
     } catch (error) {
       console.error('Error updating age:', error);
-      Alert.alert('Error', 'Failed to update age');
+      setSavingField(null);
+      Alert.alert('Error', 'Failed to save age. Please check your connection and try again.');
     }
   };
 
@@ -129,16 +140,24 @@ export default function ProfileScreen() {
       return;
     }
 
+    setSavingField('weight');
     try {
       await updateProfileMetrics({ weight });
       await loadProfile();
       setEditMode(null);
+      setSavingField(null);
+      setSavedField('weight');
+
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
+
+      // Clear saved indicator after 2 seconds
+      setTimeout(() => setSavedField(null), 2000);
     } catch (error) {
       console.error('Error updating weight:', error);
-      Alert.alert('Error', 'Failed to update weight');
+      setSavingField(null);
+      Alert.alert('Error', 'Failed to save weight. Please check your connection and try again.');
     }
   };
 
@@ -149,16 +168,24 @@ export default function ProfileScreen() {
       return;
     }
 
+    setSavingField('height');
     try {
       await updateProfileMetrics({ height });
       await loadProfile();
       setEditMode(null);
+      setSavingField(null);
+      setSavedField('height');
+
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
+
+      // Clear saved indicator after 2 seconds
+      setTimeout(() => setSavedField(null), 2000);
     } catch (error) {
       console.error('Error updating height:', error);
-      Alert.alert('Error', 'Failed to update height');
+      setSavingField(null);
+      Alert.alert('Error', 'Failed to save height. Please check your connection and try again.');
     }
   };
 
@@ -166,13 +193,25 @@ export default function ProfileScreen() {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
+
+    setSavingField('activityLevel');
     try {
       await updateActivityLevel(level);
       await loadProfile();
       setEditMode(null);
+      setSavingField(null);
+      setSavedField('activityLevel');
+
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
+      // Clear saved indicator after 2 seconds
+      setTimeout(() => setSavedField(null), 2000);
     } catch (error) {
       console.error('Error updating activity level:', error);
-      Alert.alert('Error', 'Failed to update activity level');
+      setSavingField(null);
+      Alert.alert('Error', 'Failed to save activity level. Please check your connection and try again.');
     }
   };
 
@@ -180,13 +219,25 @@ export default function ProfileScreen() {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
+
+    setSavingField('financialStatus');
     try {
       await updateFinancialStatus(status);
       await loadProfile();
       setEditMode(null);
+      setSavingField(null);
+      setSavedField('financialStatus');
+
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
+      // Clear saved indicator after 2 seconds
+      setTimeout(() => setSavedField(null), 2000);
     } catch (error) {
       console.error('Error updating financial status:', error);
-      Alert.alert('Error', 'Failed to update budget preference');
+      setSavingField(null);
+      Alert.alert('Error', 'Failed to save budget preference. Please check your connection and try again.');
     }
   };
 
@@ -349,6 +400,15 @@ export default function ProfileScreen() {
             <View style={styles.metricLabel}>
               <Ionicons name="calendar" size={20} color={Colors.textSecondary} />
               <Text style={styles.metricLabelText}>Age</Text>
+              {savingField === 'age' && (
+                <Text style={styles.savingText}>Saving...</Text>
+              )}
+              {savedField === 'age' && (
+                <View style={styles.savedBadge}>
+                  <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
+                  <Text style={styles.savedText}>Saved</Text>
+                </View>
+              )}
             </View>
             {editMode === 'age' ? (
               <View style={styles.editContainer}>
@@ -360,19 +420,25 @@ export default function ProfileScreen() {
                   placeholder="years"
                   placeholderTextColor={Colors.textSecondary}
                   autoFocus
+                  editable={savingField !== 'age'}
                 />
-                <TouchableOpacity style={styles.saveButton} onPress={handleSaveAge}>
+                <TouchableOpacity
+                  style={[styles.saveButton, savingField === 'age' && styles.buttonDisabled]}
+                  onPress={handleSaveAge}
+                  disabled={savingField === 'age'}
+                >
                   <Ionicons name="checkmark" size={20} color={Colors.background} />
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.cancelButton}
                   onPress={() => setEditMode(null)}
+                  disabled={savingField === 'age'}
                 >
                   <Ionicons name="close" size={20} color={Colors.textSecondary} />
                 </TouchableOpacity>
               </View>
             ) : (
-              <TouchableOpacity style={styles.metricValue} onPress={handleEditAge}>
+              <TouchableOpacity style={styles.metricValue} onPress={handleEditAge} disabled={savingField !== null}>
                 <Text style={styles.metricValueText}>{profile?.age || '—'} years</Text>
                 <Ionicons name="create-outline" size={18} color={Colors.accent} />
               </TouchableOpacity>
@@ -384,6 +450,15 @@ export default function ProfileScreen() {
             <View style={styles.metricLabel}>
               <Ionicons name="scale" size={20} color={Colors.textSecondary} />
               <Text style={styles.metricLabelText}>Weight</Text>
+              {savingField === 'weight' && (
+                <Text style={styles.savingText}>Saving...</Text>
+              )}
+              {savedField === 'weight' && (
+                <View style={styles.savedBadge}>
+                  <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
+                  <Text style={styles.savedText}>Saved</Text>
+                </View>
+              )}
             </View>
             {editMode === 'weight' ? (
               <View style={styles.editContainer}>
@@ -395,19 +470,25 @@ export default function ProfileScreen() {
                   placeholder="kg"
                   placeholderTextColor={Colors.textSecondary}
                   autoFocus
+                  editable={savingField !== 'weight'}
                 />
-                <TouchableOpacity style={styles.saveButton} onPress={handleSaveWeight}>
+                <TouchableOpacity
+                  style={[styles.saveButton, savingField === 'weight' && styles.buttonDisabled]}
+                  onPress={handleSaveWeight}
+                  disabled={savingField === 'weight'}
+                >
                   <Ionicons name="checkmark" size={20} color={Colors.background} />
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.cancelButton}
                   onPress={() => setEditMode(null)}
+                  disabled={savingField === 'weight'}
                 >
                   <Ionicons name="close" size={20} color={Colors.textSecondary} />
                 </TouchableOpacity>
               </View>
             ) : (
-              <TouchableOpacity style={styles.metricValue} onPress={handleEditWeight}>
+              <TouchableOpacity style={styles.metricValue} onPress={handleEditWeight} disabled={savingField !== null}>
                 <Text style={styles.metricValueText}>{profile?.weight || '—'} kg</Text>
                 <Ionicons name="create-outline" size={18} color={Colors.accent} />
               </TouchableOpacity>
@@ -419,6 +500,15 @@ export default function ProfileScreen() {
             <View style={styles.metricLabel}>
               <Ionicons name="resize" size={20} color={Colors.textSecondary} />
               <Text style={styles.metricLabelText}>Height</Text>
+              {savingField === 'height' && (
+                <Text style={styles.savingText}>Saving...</Text>
+              )}
+              {savedField === 'height' && (
+                <View style={styles.savedBadge}>
+                  <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
+                  <Text style={styles.savedText}>Saved</Text>
+                </View>
+              )}
             </View>
             {editMode === 'height' ? (
               <View style={styles.editContainer}>
@@ -430,19 +520,25 @@ export default function ProfileScreen() {
                   placeholder="cm"
                   placeholderTextColor={Colors.textSecondary}
                   autoFocus
+                  editable={savingField !== 'height'}
                 />
-                <TouchableOpacity style={styles.saveButton} onPress={handleSaveHeight}>
+                <TouchableOpacity
+                  style={[styles.saveButton, savingField === 'height' && styles.buttonDisabled]}
+                  onPress={handleSaveHeight}
+                  disabled={savingField === 'height'}
+                >
                   <Ionicons name="checkmark" size={20} color={Colors.background} />
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.cancelButton}
                   onPress={() => setEditMode(null)}
+                  disabled={savingField === 'height'}
                 >
                   <Ionicons name="close" size={20} color={Colors.textSecondary} />
                 </TouchableOpacity>
               </View>
             ) : (
-              <TouchableOpacity style={styles.metricValue} onPress={handleEditHeight}>
+              <TouchableOpacity style={styles.metricValue} onPress={handleEditHeight} disabled={savingField !== null}>
                 <Text style={styles.metricValueText}>{profile?.height || '—'} cm</Text>
                 <Ionicons name="create-outline" size={18} color={Colors.accent} />
               </TouchableOpacity>
@@ -454,12 +550,22 @@ export default function ProfileScreen() {
             <View style={styles.metricLabel}>
               <Ionicons name="fitness" size={20} color={Colors.textSecondary} />
               <Text style={styles.metricLabelText}>Activity Level</Text>
+              {savingField === 'activityLevel' && (
+                <Text style={styles.savingText}>Saving...</Text>
+              )}
+              {savedField === 'activityLevel' && (
+                <View style={styles.savedBadge}>
+                  <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
+                  <Text style={styles.savedText}>Saved</Text>
+                </View>
+              )}
             </View>
             <TouchableOpacity
               style={styles.metricValue}
               onPress={() =>
                 setEditMode(editMode === 'activityLevel' ? null : 'activityLevel')
               }
+              disabled={savingField !== null}
             >
               <Text style={styles.metricValueText}>
                 {profile?.activityLevel ? ACTIVITY_LEVEL_LABELS[profile.activityLevel] : '—'}
@@ -510,12 +616,22 @@ export default function ProfileScreen() {
             <View style={styles.metricLabel}>
               <Ionicons name="cash" size={20} color={Colors.textSecondary} />
               <Text style={styles.metricLabelText}>Financial Status</Text>
+              {savingField === 'financialStatus' && (
+                <Text style={styles.savingText}>Saving...</Text>
+              )}
+              {savedField === 'financialStatus' && (
+                <View style={styles.savedBadge}>
+                  <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
+                  <Text style={styles.savedText}>Saved</Text>
+                </View>
+              )}
             </View>
             <TouchableOpacity
               style={styles.metricValue}
               onPress={() =>
                 setEditMode(editMode === 'financialStatus' ? null : 'financialStatus')
               }
+              disabled={savingField !== null}
             >
               <Text style={styles.metricValueText}>
                 {getBudgetLabel(profile?.financialStatus)}
@@ -976,5 +1092,30 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textSecondary,
     ...Fonts.body,
+  },
+  savingText: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    ...Fonts.body,
+    marginLeft: Spacing.xs,
+    fontStyle: 'italic',
+  },
+  savedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginLeft: Spacing.xs,
+    backgroundColor: `${Colors.success}20`,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.sm,
+  },
+  savedText: {
+    fontSize: 11,
+    color: Colors.success,
+    ...Fonts.heading,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
 });

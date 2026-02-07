@@ -87,17 +87,34 @@ export async function saveUserProfile(data: OnboardingData): Promise<void> {
 export async function getUserProfile(): Promise<UserProfile | null> {
   const user = auth.currentUser;
   if (!user) {
+    console.log('getUserProfile: No authenticated user');
     return null;
   }
 
-  const docRef = doc(db, 'user_profiles', user.uid);
-  const docSnap = await getDoc(docRef);
+  console.log('getUserProfile: Fetching profile for user:', user.uid);
+  try {
+    const docRef = doc(db, 'user_profiles', user.uid);
+    const docSnap = await getDoc(docRef);
 
-  if (docSnap.exists()) {
-    return docSnap.data() as UserProfile;
+    if (docSnap.exists()) {
+      const profile = docSnap.data() as UserProfile;
+      console.log('getUserProfile: Profile retrieved successfully:', {
+        age: profile.age,
+        weight: profile.weight,
+        height: profile.height,
+        activityLevel: profile.activityLevel,
+        financialStatus: profile.financialStatus,
+        daily_calorie_goal: profile.daily_calorie_goal,
+      });
+      return profile;
+    }
+
+    console.log('getUserProfile: Profile document does not exist');
+    return null;
+  } catch (error) {
+    console.error('getUserProfile: Error fetching profile:', error);
+    throw error;
   }
-
-  return null;
 }
 
 /**
