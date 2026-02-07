@@ -1,6 +1,6 @@
 // Meal Plan Types
 
-export type MealType = 'breakfast' | 'lunch' | 'dinner';
+export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snacks';
 export type BudgetCategory = 'budget' | 'moderate' | 'premium';
 
 export interface MealIngredient {
@@ -31,6 +31,7 @@ export interface DayPlan {
   breakfast: Meal;
   lunch: Meal;
   dinner: Meal;
+  snacks: Meal;
 }
 
 export interface MealPlan {
@@ -57,4 +58,5 @@ export const MEAL_TYPE_LABELS: Record<MealType, string> = {
   breakfast: 'Breakfast',
   lunch: 'Lunch',
   dinner: 'Dinner',
+  snacks: 'Snacks',
 };

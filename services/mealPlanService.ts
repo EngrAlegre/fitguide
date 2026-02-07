@@ -50,11 +50,11 @@ Fitness Goal: ${profile.fitnessGoal}
 Daily Calorie Goal: ${profile.daily_calorie_goal} calories
 
 IMPORTANT: The financial status must heavily influence your meal suggestions:
-- budget_conscious: Simple, affordable meals using basic ingredients (rice, beans, eggs, pasta, seasonal vegetables)
-- balanced: Quality ingredients at reasonable prices (chicken, fish, fresh produce, whole grains)
-- premium_gourmet: High-end ingredients and gourmet preparations (organic meats, exotic produce, specialty items)
+- budget_conscious: Simple, affordable meals using basic ingredients (rice, beans, eggs, pasta, seasonal vegetables). Snacks should be simple like fruits, nuts, or yogurt.
+- balanced: Quality ingredients at reasonable prices (chicken, fish, fresh produce, whole grains). Snacks can include protein bars, smoothies, or cheese.
+- premium_gourmet: High-end ingredients and gourmet preparations (organic meats, exotic produce, specialty items). Snacks can include gourmet items like artisanal cheeses, exotic fruits, or premium protein snacks.
 
-Create EXACTLY 9 meals (3 days × 3 meals per day: breakfast, lunch, dinner) in valid JSON format.
+Create EXACTLY 12 meals (3 days × 4 meals per day: breakfast, lunch, dinner, snacks) in valid JSON format.
 
 Return a JSON object with this EXACT structure:
 {
@@ -77,7 +77,8 @@ Return a JSON object with this EXACT structure:
       }
     },
     "lunch": { ... same structure ... },
-    "dinner": { ... same structure ... }
+    "dinner": { ... same structure ... },
+    "snacks": { ... same structure ... }
   },
   "day2": { ... same structure ... },
   "day3": { ... same structure ... }
@@ -131,12 +132,14 @@ Ensure:
     const breakfast = await createMealWithImage('breakfast', dayData.breakfast, dayNum);
     const lunch = await createMealWithImage('lunch', dayData.lunch, dayNum);
     const dinner = await createMealWithImage('dinner', dayData.dinner, dayNum);
+    const snacks = await createMealWithImage('snacks', dayData.snacks, dayNum);
 
     days.push({
       dayNumber: dayNum,
       breakfast,
       lunch,
       dinner,
+      snacks,
     });
   }
 
