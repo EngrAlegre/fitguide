@@ -1,6 +1,6 @@
 import { generateText } from '@fastshot/ai';
-import { supabase } from '../lib/supabase';
-import { auth } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
+import { collection, addDoc, doc, getDoc, getDocs, query, where, orderBy, updateDoc, Timestamp } from 'firebase/firestore';
 import { getUserProfile } from '../utils/profile-storage';
 import {
   WorkoutPlan,
@@ -120,15 +120,14 @@ Return ONLY valid JSON, no extra text.`;
   // Create the workout plan object
   const workoutPlanId = `${user.uid}_workout_${Date.now()}`;
 
-  // Insert workout plan
-  const { error: planError } = await supabase.from('workout_plans').insert({
-    id: workoutPlanId,
+  // Save workout plan to Firestore
+  const planDocRef = await addDoc(collection(db, 'workout_plans'), {
     user_id: user.uid,
     plan_name: workoutData.planName,
     plan_description: workoutData.planDescription,
     fitness_goal: fitnessGoal,
     difficulty_level: difficultyLevel,
-    created_at: new Date().toISOString(),
+    created_at: Timestamp.now(),
     metadata: {
       totalExercises: workoutData.exercises.length,
       estimatedDuration: workoutData.exercises.reduce(
@@ -139,35 +138,39 @@ Return ONLY valid JSON, no extra text.`;
     },
   });
 
-  if (planError) {
-    console.error('Error saving workout plan:', planError);
-    throw new Error('Failed to save workout plan');
-  }
+  const insertedExercises = [];
 
   // Insert exercises
-  const exercisesData = workoutData.exercises.map((ex: any) => ({
-    workout_plan_id: workoutPlanId,
-    exercise_name: ex.exerciseName,
-    exercise_description: ex.exerciseDescription,
-    target_sets: ex.targetSets,
-    target_reps: ex.targetReps,
-    rest_seconds: ex.restSeconds,
-    equipment_needed: ex.equipmentNeeded,
-    muscle_groups: ex.muscleGroups,
-    exercise_order: ex.exerciseOrder,
-  }));
+  for (const ex of workoutData.exercises) {
+    const exerciseDocRef = await addDoc(collection(db, 'workout_exercises'), {
+      workout_plan_id: planDocRef.id,
+      exercise_name: ex.exerciseName,
+      exercise_description: ex.exerciseDescription,
+      target_sets: ex.targetSets,
+      target_reps: ex.targetReps,
+      rest_seconds: ex.restSeconds,
+      equipment_needed: ex.equipmentNeeded,
+      muscle_groups: ex.muscleGroups,
+      exercise_order: ex.exerciseOrder,
+      created_at: Timestamp.now(),
+    });
 
-  const { data: insertedExercises, error: exercisesError } = await supabase
-    .from('workout_exercises')
-    .insert(exercisesData)
-    .select();
-
-  if (exercisesError) {
-    console.error('Error saving exercises:', exercisesError);
-    throw new Error('Failed to save exercises');
+    insertedExercises.push({
+      id: exerciseDocRef.id,
+      workout_plan_id: planDocRef.id,
+      exercise_name: ex.exerciseName,
+      exercise_description: ex.exerciseDescription,
+      target_sets: ex.targetSets,
+      target_reps: ex.targetReps,
+      rest_seconds: ex.restSeconds,
+      equipment_needed: ex.equipmentNeeded,
+      muscle_groups: ex.muscleGroups,
+      exercise_order: ex.exerciseOrder,
+      created_at: new Date().toISOString(),
+    });
   }
 
-  console.log('✅ Workout plan saved to Supabase');
+  console.log('✅ Workout plan saved to Firestore');
 
   // Construct and return the complete workout plan
   const exercises: WorkoutExercise[] = (insertedExercises || []).map((ex) => ({
@@ -187,7 +190,7 @@ Return ONLY valid JSON, no extra text.`;
   }));
 
   return {
-    id: workoutPlanId,
+    id: planDocRef.id,
     userId: user.uid,
     planName: workoutData.planName,
     planDescription: workoutData.planDescription,
@@ -215,78 +218,85 @@ export async function getLatestWorkoutPlan(): Promise<WorkoutPlan | null> {
     return null;
   }
 
-  const { data: plans, error: planError } = await supabase
-    .from('workout_plans')
-    .select('*')
-    .eq('user_id', user.uid)
-    .order('created_at', { ascending: false })
-    .limit(1);
+  try {
+    // Get latest workout plan
+    const plansQuery = query(
+      collection(db, 'workout_plans'),
+      where('user_id', '==', user.uid),
+      orderBy('created_at', 'desc')
+    );
 
-  if (planError || !plans || plans.length === 0) {
-    return null;
-  }
+    const plansSnapshot = await getDocs(plansQuery);
 
-  const plan = plans[0];
+    if (plansSnapshot.empty) {
+      return null;
+    }
 
-  // Get exercises for this plan
-  const { data: exercises, error: exercisesError } = await supabase
-    .from('workout_exercises')
-    .select('*')
-    .eq('workout_plan_id', plan.id)
-    .order('exercise_order', { ascending: true });
+    const planDoc = plansSnapshot.docs[0];
+    const plan = { id: planDoc.id, ...planDoc.data() } as any;
 
-  if (exercisesError) {
-    console.error('Error fetching exercises:', exercisesError);
-    return null;
-  }
+    // Get exercises for this plan
+    const exercisesQuery = query(
+      collection(db, 'workout_exercises'),
+      where('workout_plan_id', '==', plan.id),
+      orderBy('exercise_order', 'asc')
+    );
 
-  // Get today's set logs to calculate completion
-  const today = new Date().toISOString().split('T')[0];
-  const { data: todayLogs } = await supabase
-    .from('workout_set_logs')
-    .select('exercise_id, set_number')
-    .eq('user_id', user.uid)
-    .eq('workout_plan_id', plan.id)
-    .eq('date', today);
+    const exercisesSnapshot = await getDocs(exercisesQuery);
 
-  const completedSetsMap = new Map<string, number>();
-  if (todayLogs) {
-    todayLogs.forEach((log) => {
+    // Get today's set logs to calculate completion
+    const today = new Date().toISOString().split('T')[0];
+    const logsQuery = query(
+      collection(db, 'workout_set_logs'),
+      where('user_id', '==', user.uid),
+      where('workout_plan_id', '==', plan.id),
+      where('date', '==', today)
+    );
+
+    const logsSnapshot = await getDocs(logsQuery);
+
+    const completedSetsMap = new Map<string, number>();
+    logsSnapshot.docs.forEach((logDoc) => {
+      const log = logDoc.data();
       const count = completedSetsMap.get(log.exercise_id) || 0;
       completedSetsMap.set(log.exercise_id, Math.max(count, log.set_number));
     });
-  }
 
-  const exerciseList: WorkoutExercise[] = (exercises || []).map((ex) => {
-    const completedSets = completedSetsMap.get(ex.id) || 0;
+    const exerciseList: WorkoutExercise[] = exercisesSnapshot.docs.map((exDoc) => {
+      const ex = { id: exDoc.id, ...exDoc.data() } as any;
+      const completedSets = completedSetsMap.get(ex.id) || 0;
+      return {
+        id: ex.id,
+        workoutPlanId: ex.workout_plan_id,
+        exerciseName: ex.exercise_name,
+        exerciseDescription: ex.exercise_description,
+        targetSets: ex.target_sets,
+        targetReps: ex.target_reps,
+        restSeconds: ex.rest_seconds,
+        equipmentNeeded: ex.equipment_needed,
+        muscleGroups: ex.muscle_groups,
+        exerciseOrder: ex.exercise_order,
+        createdAt: ex.created_at?.toDate?.().toISOString() || new Date().toISOString(),
+        completedSets,
+        isCompleted: completedSets >= ex.target_sets,
+      };
+    });
+
     return {
-      id: ex.id,
-      workoutPlanId: ex.workout_plan_id,
-      exerciseName: ex.exercise_name,
-      exerciseDescription: ex.exercise_description,
-      targetSets: ex.target_sets,
-      targetReps: ex.target_reps,
-      restSeconds: ex.rest_seconds,
-      equipmentNeeded: ex.equipment_needed,
-      muscleGroups: ex.muscle_groups,
-      exerciseOrder: ex.exercise_order,
-      createdAt: ex.created_at,
-      completedSets,
-      isCompleted: completedSets >= ex.target_sets,
+      id: plan.id,
+      userId: plan.user_id,
+      planName: plan.plan_name,
+      planDescription: plan.plan_description,
+      fitnessGoal: plan.fitness_goal,
+      difficultyLevel: plan.difficulty_level,
+      exercises: exerciseList,
+      createdAt: plan.created_at?.toDate?.().toISOString() || new Date().toISOString(),
+      metadata: plan.metadata,
     };
-  });
-
-  return {
-    id: plan.id,
-    userId: plan.user_id,
-    planName: plan.plan_name,
-    planDescription: plan.plan_description,
-    fitnessGoal: plan.fitness_goal,
-    difficultyLevel: plan.difficulty_level,
-    exercises: exerciseList,
-    createdAt: plan.created_at,
-    metadata: plan.metadata,
-  };
+  } catch (error) {
+    console.error('Error fetching workout plan:', error);
+    return null;
+  }
 }
 
 /**
@@ -307,27 +317,21 @@ export async function logWorkoutSet(
   const today = new Date().toISOString().split('T')[0];
 
   try {
-    const { data, error } = await supabase
-      .from('workout_set_logs')
-      .insert({
-        user_id: user.uid,
-        workout_plan_id: workoutPlanId,
-        exercise_id: exerciseId,
-        set_number: setNumber,
-        reps_completed: repsCompleted,
-        weight_used: weightUsed,
-        completed_at: new Date().toISOString(),
-        date: today,
-      })
-      .select()
-      .single();
+    const docRef = await addDoc(collection(db, 'workout_set_logs'), {
+      user_id: user.uid,
+      workout_plan_id: workoutPlanId,
+      exercise_id: exerciseId,
+      set_number: setNumber,
+      reps_completed: repsCompleted,
+      weight_used: weightUsed,
+      completed_at: new Date().toISOString(),
+      date: today,
+      created_at: Timestamp.now(),
+    });
 
-    if (error) {
-      console.error('Error logging workout set:', error);
-      return { success: false, error: error.message };
-    }
-
-    if (!data || !data.id) {
+    // Verify the insert by reading back
+    const verifySnap = await getDoc(docRef);
+    if (!verifySnap.exists()) {
       return { success: false, error: 'Set was not saved properly' };
     }
 
@@ -350,23 +354,15 @@ export async function startWorkoutSession(workoutPlanId: string): Promise<string
   const today = new Date().toISOString().split('T')[0];
 
   try {
-    const { data, error } = await supabase
-      .from('workout_sessions')
-      .insert({
-        user_id: user.uid,
-        workout_plan_id: workoutPlanId,
-        started_at: new Date().toISOString(),
-        date: today,
-      })
-      .select()
-      .single();
+    const docRef = await addDoc(collection(db, 'workout_sessions'), {
+      user_id: user.uid,
+      workout_plan_id: workoutPlanId,
+      started_at: new Date().toISOString(),
+      date: today,
+      created_at: Timestamp.now(),
+    });
 
-    if (error || !data) {
-      console.error('Error starting workout session:', error);
-      return null;
-    }
-
-    return data.id;
+    return docRef.id;
   } catch (error) {
     console.error('Error starting workout session:', error);
     return null;
@@ -386,19 +382,19 @@ export async function completeWorkoutSession(
   }
 
   try {
-    const { error } = await supabase
-      .from('workout_sessions')
-      .update({
-        completed_at: new Date().toISOString(),
-        total_volume_kg: totalVolume,
-      })
-      .eq('id', sessionId)
-      .eq('user_id', user.uid);
+    const docRef = doc(db, 'workout_sessions', sessionId);
 
-    if (error) {
-      console.error('Error completing workout session:', error);
+    // Verify ownership
+    const docSnap = await getDoc(docRef);
+    if (!docSnap.exists() || docSnap.data().user_id !== user.uid) {
+      console.error('Session not found or unauthorized');
       return false;
     }
+
+    await updateDoc(docRef, {
+      completed_at: new Date().toISOString(),
+      total_volume_kg: totalVolume,
+    });
 
     return true;
   } catch (error) {
@@ -423,14 +419,17 @@ export async function getWorkoutStreak(): Promise<WorkoutStreak> {
   }
 
   try {
-    const { data: sessions, error } = await supabase
-      .from('workout_sessions')
-      .select('date')
-      .eq('user_id', user.uid)
-      .not('completed_at', 'is', null)
-      .order('date', { ascending: false });
+    const sessionsQuery = query(
+      collection(db, 'workout_sessions'),
+      where('user_id', '==', user.uid),
+      where('completed_at', '!=', null),
+      orderBy('completed_at'),
+      orderBy('date', 'desc')
+    );
 
-    if (error || !sessions) {
+    const sessionsSnapshot = await getDocs(sessionsQuery);
+
+    if (sessionsSnapshot.empty) {
       return {
         currentStreak: 0,
         longestStreak: 0,
@@ -440,7 +439,8 @@ export async function getWorkoutStreak(): Promise<WorkoutStreak> {
       };
     }
 
-    const uniqueDates = [...new Set(sessions.map((s) => s.date))].sort().reverse();
+    const sessions = sessionsSnapshot.docs.map(doc => doc.data());
+    const uniqueDates = [...new Set(sessions.map((s: any) => s.date))].sort().reverse();
 
     if (uniqueDates.length === 0) {
       return {

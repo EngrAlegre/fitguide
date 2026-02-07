@@ -1,10 +1,10 @@
-import { supabase } from '../lib/supabase';
-import { auth } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
+import { collection, addDoc, getDoc, doc, Timestamp } from 'firebase/firestore';
 import { Activity, ActivityType } from '../types/activity';
 
 /**
  * Log an activity with Verify & Lock pattern
- * Ensures every activity is saved to Supabase and verified
+ * Ensures every activity is saved to Firestore and verified
  */
 export async function logActivity(
   type: ActivityType,
@@ -21,39 +21,36 @@ export async function logActivity(
 
   try {
     // Insert activity with verification
-    const { data, error } = await supabase
-      .from('activity_completions')
-      .insert({
-        user_id: user.uid,
-        activity_type: type,
-        duration_minutes: duration,
-        intensity,
-        calories_burned: caloriesBurned,
-        date: today,
-        completed_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
+    const activityData = {
+      user_id: user.uid,
+      activity_type: type,
+      duration_minutes: duration,
+      intensity,
+      calories_burned: caloriesBurned,
+      date: today,
+      completed_at: new Date().toISOString(),
+      created_at: Timestamp.now(),
+    };
 
-    if (error) {
-      console.error('Error logging activity:', error);
-      return { success: false, error: error.message };
-    }
+    const docRef = await addDoc(collection(db, 'activities'), activityData);
 
-    // Verify the insert by reading back
-    if (!data || !data.id) {
+    // Verify the insert by reading back (Verify & Lock pattern)
+    const verifySnap = await getDoc(docRef);
+    if (!verifySnap.exists()) {
       return { success: false, error: 'Activity was not saved properly' };
     }
 
+    const savedData = verifySnap.data();
+
     // Success - transform to Activity type
     const activity: Activity = {
-      id: data.id,
-      type: data.activity_type as ActivityType,
-      duration: data.duration_minutes,
-      intensity: data.intensity,
-      caloriesBurned: data.calories_burned,
-      timestamp: new Date(data.completed_at).getTime(),
-      date: data.date,
+      id: docRef.id,
+      type: savedData.activity_type as ActivityType,
+      duration: savedData.duration_minutes,
+      intensity: savedData.intensity,
+      caloriesBurned: savedData.calories_burned,
+      timestamp: new Date(savedData.completed_at).getTime(),
+      date: savedData.date,
     };
 
     return { success: true, activity };
@@ -64,7 +61,7 @@ export async function logActivity(
 }
 
 /**
- * Get today's activities from Supabase
+ * Get today's activities from Firestore
  */
 export async function getTodayActivities(): Promise<Activity[]> {
   const user = auth.currentUser;
@@ -75,27 +72,29 @@ export async function getTodayActivities(): Promise<Activity[]> {
   const today = new Date().toISOString().split('T')[0];
 
   try {
-    const { data, error } = await supabase
-      .from('activity_completions')
-      .select('*')
-      .eq('user_id', user.uid)
-      .eq('date', today)
-      .order('completed_at', { ascending: false });
+    const { query, collection: firestoreCollection, where, orderBy: firestoreOrderBy, getDocs } = await import('firebase/firestore');
 
-    if (error) {
-      console.error('Error fetching activities:', error);
-      return [];
-    }
+    const q = query(
+      firestoreCollection(db, 'activities'),
+      where('user_id', '==', user.uid),
+      where('date', '==', today),
+      firestoreOrderBy('completed_at', 'desc')
+    );
 
-    return (data || []).map((row) => ({
-      id: row.id,
-      type: row.activity_type as ActivityType,
-      duration: row.duration_minutes,
-      intensity: row.intensity,
-      caloriesBurned: row.calories_burned,
-      timestamp: new Date(row.completed_at).getTime(),
-      date: row.date,
-    }));
+    const querySnapshot = await getDocs(q);
+
+    return querySnapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        type: data.activity_type as ActivityType,
+        duration: data.duration_minutes,
+        intensity: data.intensity,
+        caloriesBurned: data.calories_burned,
+        timestamp: new Date(data.completed_at).getTime(),
+        date: data.date,
+      };
+    });
   } catch (error) {
     console.error('Error fetching activities:', error);
     return [];
@@ -123,28 +122,30 @@ export async function getActivitiesInRange(
   }
 
   try {
-    const { data, error } = await supabase
-      .from('activity_completions')
-      .select('*')
-      .eq('user_id', user.uid)
-      .gte('date', startDate)
-      .lte('date', endDate)
-      .order('completed_at', { ascending: false });
+    const { query, collection: firestoreCollection, where, orderBy: firestoreOrderBy, getDocs } = await import('firebase/firestore');
 
-    if (error) {
-      console.error('Error fetching activities in range:', error);
-      return [];
-    }
+    const q = query(
+      firestoreCollection(db, 'activities'),
+      where('user_id', '==', user.uid),
+      where('date', '>=', startDate),
+      where('date', '<=', endDate),
+      firestoreOrderBy('completed_at', 'desc')
+    );
 
-    return (data || []).map((row) => ({
-      id: row.id,
-      type: row.activity_type as ActivityType,
-      duration: row.duration_minutes,
-      intensity: row.intensity,
-      caloriesBurned: row.calories_burned,
-      timestamp: new Date(row.completed_at).getTime(),
-      date: row.date,
-    }));
+    const querySnapshot = await getDocs(q);
+
+    return querySnapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        type: data.activity_type as ActivityType,
+        duration: data.duration_minutes,
+        intensity: data.intensity,
+        caloriesBurned: data.calories_burned,
+        timestamp: new Date(data.completed_at).getTime(),
+        date: data.date,
+      };
+    });
   } catch (error) {
     console.error('Error fetching activities in range:', error);
     return [];
@@ -161,16 +162,21 @@ export async function deleteActivity(activityId: string): Promise<{ success: boo
   }
 
   try {
-    const { error } = await supabase
-      .from('activity_completions')
-      .delete()
-      .eq('id', activityId)
-      .eq('user_id', user.uid);
+    const { doc: firestoreDoc, getDoc, deleteDoc } = await import('firebase/firestore');
 
-    if (error) {
-      console.error('Error deleting activity:', error);
-      return { success: false, error: error.message };
+    const docRef = firestoreDoc(db, 'activities', activityId);
+
+    // Verify ownership before deletion
+    const docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) {
+      return { success: false, error: 'Activity not found' };
     }
+
+    if (docSnap.data().user_id !== user.uid) {
+      return { success: false, error: 'Not authorized to delete this activity' };
+    }
+
+    await deleteDoc(docRef);
 
     return { success: true };
   } catch (error: any) {

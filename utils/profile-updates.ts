@@ -1,5 +1,5 @@
-import { supabase } from '../lib/supabase';
-import { auth } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
+import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { ActivityLevel, FinancialStatus, OnboardingData } from '../types/profile';
 import { getUserProfile } from './profile-storage';
 
@@ -85,7 +85,7 @@ export async function updateProfileMetrics(updates: {
 
   const updateData: any = {
     ...updates,
-    updated_at: new Date().toISOString(),
+    updated_at: Timestamp.now(),
   };
 
   // Recalculate calorie goal if we have all necessary data
@@ -111,26 +111,12 @@ export async function updateProfileMetrics(updates: {
 
   console.log('updateProfileMetrics: Updating profile with data:', updateData);
   try {
-    const { data: updatedData, error } = await supabase
-      .from('user_profiles')
-      .update(updateData)
-      .eq('id', user.uid)
-      .select();
-
-    if (error) {
-      console.error('updateProfileMetrics: Failed to update profile:', error);
-      throw new Error(`Failed to update profile: ${error.message}`);
-    }
-
-    if (!updatedData || updatedData.length === 0) {
-      console.error('updateProfileMetrics: No rows were updated');
-      throw new Error('Failed to update profile: No rows affected');
-    }
-
-    console.log('updateProfileMetrics: Successfully updated profile:', updatedData[0]);
-  } catch (error) {
+    const docRef = doc(db, 'user_profiles', user.uid);
+    await updateDoc(docRef, updateData);
+    console.log('updateProfileMetrics: Successfully updated profile');
+  } catch (error: any) {
     console.error('updateProfileMetrics: Unexpected error:', error);
-    throw error;
+    throw new Error(`Failed to update profile: ${error.message}`);
   }
 }
 
@@ -153,7 +139,7 @@ export async function updateActivityLevel(activityLevel: ActivityLevel): Promise
 
   const updateData: any = {
     activity_level: activityLevel,
-    updated_at: new Date().toISOString(),
+    updated_at: Timestamp.now(),
   };
 
   // Recalculate calorie goal if we have all necessary data
@@ -179,26 +165,12 @@ export async function updateActivityLevel(activityLevel: ActivityLevel): Promise
 
   console.log('updateActivityLevel: Updating profile with data:', updateData);
   try {
-    const { data: updatedData, error } = await supabase
-      .from('user_profiles')
-      .update(updateData)
-      .eq('id', user.uid)
-      .select();
-
-    if (error) {
-      console.error('updateActivityLevel: Failed to update profile:', error);
-      throw new Error(`Failed to update activity level: ${error.message}`);
-    }
-
-    if (!updatedData || updatedData.length === 0) {
-      console.error('updateActivityLevel: No rows were updated');
-      throw new Error('Failed to update activity level: No rows affected');
-    }
-
-    console.log('updateActivityLevel: Successfully updated profile:', updatedData[0]);
-  } catch (error) {
+    const docRef = doc(db, 'user_profiles', user.uid);
+    await updateDoc(docRef, updateData);
+    console.log('updateActivityLevel: Successfully updated profile');
+  } catch (error: any) {
     console.error('updateActivityLevel: Unexpected error:', error);
-    throw error;
+    throw new Error(`Failed to update activity level: ${error.message}`);
   }
 }
 
@@ -214,31 +186,17 @@ export async function updateFinancialStatus(financialStatus: FinancialStatus): P
 
   const updateData = {
     financial_status: financialStatus,
-    updated_at: new Date().toISOString(),
+    updated_at: Timestamp.now(),
   };
 
   console.log('updateFinancialStatus: Updating profile with data:', updateData);
   try {
-    const { data: updatedData, error } = await supabase
-      .from('user_profiles')
-      .update(updateData)
-      .eq('id', user.uid)
-      .select();
-
-    if (error) {
-      console.error('updateFinancialStatus: Failed to update profile:', error);
-      throw new Error(`Failed to update financial status: ${error.message}`);
-    }
-
-    if (!updatedData || updatedData.length === 0) {
-      console.error('updateFinancialStatus: No rows were updated');
-      throw new Error('Failed to update financial status: No rows affected');
-    }
-
-    console.log('updateFinancialStatus: Successfully updated profile:', updatedData[0]);
-  } catch (error) {
+    const docRef = doc(db, 'user_profiles', user.uid);
+    await updateDoc(docRef, updateData);
+    console.log('updateFinancialStatus: Successfully updated profile');
+  } catch (error: any) {
     console.error('updateFinancialStatus: Unexpected error:', error);
-    throw error;
+    throw new Error(`Failed to update financial status: ${error.message}`);
   }
 }
 
@@ -263,7 +221,7 @@ export async function updateFitnessGoal(
 
   const updateData: any = {
     fitness_goal: fitnessGoal,
-    updated_at: new Date().toISOString(),
+    updated_at: Timestamp.now(),
   };
 
   // Recalculate calorie goal if we have all necessary data
@@ -289,25 +247,11 @@ export async function updateFitnessGoal(
 
   console.log('updateFitnessGoal: Updating profile with data:', updateData);
   try {
-    const { data: updatedData, error } = await supabase
-      .from('user_profiles')
-      .update(updateData)
-      .eq('id', user.uid)
-      .select();
-
-    if (error) {
-      console.error('updateFitnessGoal: Failed to update profile:', error);
-      throw new Error(`Failed to update fitness goal: ${error.message}`);
-    }
-
-    if (!updatedData || updatedData.length === 0) {
-      console.error('updateFitnessGoal: No rows were updated');
-      throw new Error('Failed to update fitness goal: No rows affected');
-    }
-
-    console.log('updateFitnessGoal: Successfully updated profile:', updatedData[0]);
-  } catch (error) {
+    const docRef = doc(db, 'user_profiles', user.uid);
+    await updateDoc(docRef, updateData);
+    console.log('updateFitnessGoal: Successfully updated profile');
+  } catch (error: any) {
     console.error('updateFitnessGoal: Unexpected error:', error);
-    throw error;
+    throw new Error(`Failed to update fitness goal: ${error.message}`);
   }
 }

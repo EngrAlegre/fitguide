@@ -17,7 +17,8 @@ import * as Haptics from 'expo-haptics';
 import { useTextGeneration } from '@fastshot/ai';
 import { Colors, Fonts, Spacing, BorderRadius } from '../../constants/theme';
 import { useFirebaseAuth } from '../../lib/firebase-auth-provider';
-import { supabase } from '../../lib/supabase';
+import { db } from '../../lib/firebase';
+import { collection, addDoc, query, where, orderBy, getDocs, Timestamp } from 'firebase/firestore';
 import { getUserProfile } from '../../utils/profile-storage';
 import { UserProfile } from '../../types/profile';
 
@@ -117,26 +118,24 @@ export default function CoachScreen() {
     try {
       setIsLoadingHistory(true);
 
-      // Set user_id for RLS
-      await supabase.rpc('set_user_id', { user_id: user.uid });
+      const q = query(
+        collection(db, 'coach_messages'),
+        where('user_id', '==', user.uid),
+        orderBy('timestamp', 'asc')
+      );
 
-      const { data, error } = await supabase
-        .from('coach_messages')
-        .select('*')
-        .eq('user_id', user.uid)
-        .order('timestamp', { ascending: true });
+      const querySnapshot = await getDocs(q);
 
-      if (error) {
-        console.error('Error loading chat history:', error);
-        // Show welcome message if can't load history
-        setMessages([getWelcomeMessage()]);
-      } else if (data && data.length > 0) {
-        const loadedMessages: Message[] = data.map((row) => ({
-          id: row.id,
-          role: row.role,
-          content: row.content,
-          timestamp: row.timestamp,
-        }));
+      if (!querySnapshot.empty) {
+        const loadedMessages: Message[] = querySnapshot.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            role: data.role,
+            content: data.content,
+            timestamp: data.timestamp,
+          };
+        });
         setMessages(loadedMessages);
       } else {
         // First time user - show welcome message
@@ -164,10 +163,7 @@ export default function CoachScreen() {
     if (!user) return;
 
     try {
-      // Set user_id for RLS
-      await supabase.rpc('set_user_id', { user_id: user.uid });
-
-      const { error } = await supabase.from('coach_messages').insert({
+      await addDoc(collection(db, 'coach_messages'), {
         user_id: user.uid,
         role: message.role,
         content: message.content,
@@ -183,11 +179,8 @@ export default function CoachScreen() {
               daily_calories: profile.daily_calorie_goal,
             }
           : null,
+        created_at: Timestamp.now(),
       });
-
-      if (error) {
-        console.error('Error saving message:', error);
-      }
     } catch (error) {
       console.error('Error in saveMessageToDatabase:', error);
     }

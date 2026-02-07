@@ -1,6 +1,6 @@
 import { generateText, generateImage } from '@fastshot/ai';
-import { supabase } from '../lib/supabase';
-import { auth } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
+import { collection, addDoc, doc, getDoc, getDocs, query, where, orderBy, deleteDoc, Timestamp } from 'firebase/firestore';
 import { getUserProfile } from '../utils/profile-storage';
 import { MealPlan, DayPlan, Meal, MealType, BudgetCategory } from '../types/mealPlan';
 
@@ -223,20 +223,18 @@ async function createMealWithImage(
 }
 
 /**
- * Save meal plan to Supabase
+ * Save meal plan to Firestore
  */
 async function saveMealPlan(mealPlan: MealPlan): Promise<void> {
-  const { error } = await supabase
-    .from('meal_plans')
-    .upsert({
-      id: mealPlan.id,
+  try {
+    await addDoc(collection(db, 'meal_plans'), {
+      meal_plan_id: mealPlan.id,
       user_id: mealPlan.userId,
-      created_at: mealPlan.createdAt,
+      created_at: Timestamp.now(),
       metadata: mealPlan.metadata,
       days: mealPlan.days,
     });
-
-  if (error) {
+  } catch (error: any) {
     console.error('Error saving meal plan:', error);
     throw new Error('Failed to save meal plan');
   }
@@ -251,72 +249,71 @@ export async function getLatestMealPlan(): Promise<MealPlan | null> {
     return null;
   }
 
-  // Get the latest meal plan
-  const { data: mealPlans, error } = await supabase
-    .from('meal_plans')
-    .select('*')
-    .eq('user_id', user.uid)
-    .order('created_at', { ascending: false })
-    .limit(1);
+  try {
+    // Get the latest meal plan
+    const plansQuery = query(
+      collection(db, 'meal_plans'),
+      where('user_id', '==', user.uid),
+      orderBy('created_at', 'desc')
+    );
 
-  if (error) {
-    console.error('Error fetching meal plan:', error);
-    return null;
-  }
+    const plansSnapshot = await getDocs(plansQuery);
 
-  if (!mealPlans || mealPlans.length === 0) {
-    return null;
-  }
+    if (plansSnapshot.empty) {
+      return null;
+    }
 
-  const mealPlan = mealPlans[0];
+    const mealPlanDoc = plansSnapshot.docs[0];
+    const mealPlan = { id: mealPlanDoc.id, ...mealPlanDoc.data() } as any;
 
-  // Get all completions for this meal plan
-  const { data: completions, error: completionsError } = await supabase
-    .from('meal_completions')
-    .select('*')
-    .eq('meal_plan_id', mealPlan.id);
+    // Get all completions for this meal plan
+    const completionsQuery = query(
+      collection(db, 'meal_completions'),
+      where('meal_plan_id', '==', mealPlan.meal_plan_id)
+    );
 
-  if (completionsError) {
-    console.error('Error fetching completions:', completionsError);
-  }
+    const completionsSnapshot = await getDocs(completionsQuery);
 
-  // Map completion data back to meal plan structure
-  const completionMap = new Map<string, boolean>();
-  if (completions) {
-    completions.forEach((completion) => {
+    // Map completion data back to meal plan structure
+    const completionMap = new Map<string, boolean>();
+    completionsSnapshot.docs.forEach((completionDoc) => {
+      const completion = completionDoc.data();
       const key = `${completion.day_number}_${completion.meal_type}`;
       completionMap.set(key, true);
     });
+
+    // Update isCompleted flags based on completions
+    const days = mealPlan.days.map((day: DayPlan) => ({
+      ...day,
+      breakfast: {
+        ...day.breakfast,
+        isCompleted: completionMap.has(`${day.dayNumber}_breakfast`) || false,
+      },
+      lunch: {
+        ...day.lunch,
+        isCompleted: completionMap.has(`${day.dayNumber}_lunch`) || false,
+      },
+      dinner: {
+        ...day.dinner,
+        isCompleted: completionMap.has(`${day.dayNumber}_dinner`) || false,
+      },
+      snacks: {
+        ...day.snacks,
+        isCompleted: completionMap.has(`${day.dayNumber}_snacks`) || false,
+      },
+    }));
+
+    return {
+      id: mealPlan.meal_plan_id,
+      userId: mealPlan.user_id,
+      days,
+      createdAt: mealPlan.created_at?.toDate?.().toISOString() || new Date().toISOString(),
+      metadata: mealPlan.metadata,
+    };
+  } catch (error) {
+    console.error('Error fetching meal plan:', error);
+    return null;
   }
-
-  // Update isCompleted flags based on completions
-  const days = mealPlan.days.map((day: DayPlan) => ({
-    ...day,
-    breakfast: {
-      ...day.breakfast,
-      isCompleted: completionMap.has(`${day.dayNumber}_breakfast`) || false,
-    },
-    lunch: {
-      ...day.lunch,
-      isCompleted: completionMap.has(`${day.dayNumber}_lunch`) || false,
-    },
-    dinner: {
-      ...day.dinner,
-      isCompleted: completionMap.has(`${day.dayNumber}_dinner`) || false,
-    },
-    snacks: {
-      ...day.snacks,
-      isCompleted: completionMap.has(`${day.dayNumber}_snacks`) || false,
-    },
-  }));
-
-  return {
-    id: mealPlan.id,
-    userId: mealPlan.user_id,
-    days,
-    createdAt: mealPlan.created_at,
-    metadata: mealPlan.metadata,
-  };
 }
 
 /**
@@ -334,26 +331,31 @@ export async function markMealAsCompleted(
   }
 
   try {
-    // Insert completion record (UNIQUE constraint ensures no duplicates)
-    const { error } = await supabase
-      .from('meal_completions')
-      .insert({
-        user_id: user.uid,
-        meal_plan_id: mealPlanId,
-        day_number: dayNumber,
-        meal_type: mealType,
-        calories,
-        completed_at: new Date().toISOString(),
-      });
+    // Check if already completed (prevent duplicates)
+    const completionsQuery = query(
+      collection(db, 'meal_completions'),
+      where('user_id', '==', user.uid),
+      where('meal_plan_id', '==', mealPlanId),
+      where('day_number', '==', dayNumber),
+      where('meal_type', '==', mealType)
+    );
 
-    if (error) {
-      // Check if it's a duplicate (already completed)
-      if (error.code === '23505') {
-        return { success: true }; // Already completed, treat as success
-      }
-      console.error('Error marking meal as completed:', error);
-      return { success: false, error: error.message };
+    const existingCompletions = await getDocs(completionsQuery);
+
+    if (!existingCompletions.empty) {
+      return { success: true }; // Already completed, treat as success
     }
+
+    // Insert completion record
+    await addDoc(collection(db, 'meal_completions'), {
+      user_id: user.uid,
+      meal_plan_id: mealPlanId,
+      day_number: dayNumber,
+      meal_type: mealType,
+      calories,
+      completed_at: new Date().toISOString(),
+      created_at: Timestamp.now(),
+    });
 
     return { success: true };
   } catch (error: any) {
@@ -376,17 +378,19 @@ export async function unmarkMealAsCompleted(
   }
 
   try {
-    const { error } = await supabase
-      .from('meal_completions')
-      .delete()
-      .eq('user_id', user.uid)
-      .eq('meal_plan_id', mealPlanId)
-      .eq('day_number', dayNumber)
-      .eq('meal_type', mealType);
+    const completionsQuery = query(
+      collection(db, 'meal_completions'),
+      where('user_id', '==', user.uid),
+      where('meal_plan_id', '==', mealPlanId),
+      where('day_number', '==', dayNumber),
+      where('meal_type', '==', mealType)
+    );
 
-    if (error) {
-      console.error('Error unmarking meal:', error);
-      return { success: false, error: error.message };
+    const completionsSnapshot = await getDocs(completionsQuery);
+
+    // Delete all matching completions
+    for (const completionDoc of completionsSnapshot.docs) {
+      await deleteDoc(doc(db, 'meal_completions', completionDoc.id));
     }
 
     return { success: true };
@@ -413,38 +417,41 @@ export async function getDailyProgress(
     return { completed: 0, total: 4, consumedCalories: 0, totalCalories: 0 };
   }
 
-  // Get completions for this day
-  const { data: completions, error } = await supabase
-    .from('meal_completions')
-    .select('calories')
-    .eq('user_id', user.uid)
-    .eq('meal_plan_id', mealPlanId)
-    .eq('day_number', dayNumber);
+  try {
+    // Get completions for this day
+    const completionsQuery = query(
+      collection(db, 'meal_completions'),
+      where('user_id', '==', user.uid),
+      where('meal_plan_id', '==', mealPlanId),
+      where('day_number', '==', dayNumber)
+    );
 
-  if (error) {
+    const completionsSnapshot = await getDocs(completionsQuery);
+
+    const completions = completionsSnapshot.docs.map(doc => doc.data());
+    const consumedCalories = completions.reduce((sum, c) => sum + (c.calories || 0), 0);
+
+    // Get the meal plan to calculate total calories
+    const mealPlan = await getLatestMealPlan();
+    if (!mealPlan) {
+      return { completed: completions.length, total: 4, consumedCalories, totalCalories: 0 };
+    }
+
+    const day = mealPlan.days.find((d) => d.dayNumber === dayNumber);
+    if (!day) {
+      return { completed: completions.length, total: 4, consumedCalories, totalCalories: 0 };
+    }
+
+    const totalCalories = day.breakfast.calories + day.lunch.calories + day.dinner.calories + day.snacks.calories;
+
+    return {
+      completed: completions.length,
+      total: 4,
+      consumedCalories,
+      totalCalories,
+    };
+  } catch (error) {
     console.error('Error fetching daily progress:', error);
     return { completed: 0, total: 4, consumedCalories: 0, totalCalories: 0 };
   }
-
-  const consumedCalories = completions?.reduce((sum, c) => sum + (c.calories || 0), 0) || 0;
-
-  // Get the meal plan to calculate total calories
-  const mealPlan = await getLatestMealPlan();
-  if (!mealPlan) {
-    return { completed: completions?.length || 0, total: 4, consumedCalories, totalCalories: 0 };
-  }
-
-  const day = mealPlan.days.find((d) => d.dayNumber === dayNumber);
-  if (!day) {
-    return { completed: completions?.length || 0, total: 4, consumedCalories, totalCalories: 0 };
-  }
-
-  const totalCalories = day.breakfast.calories + day.lunch.calories + day.dinner.calories + day.snacks.calories;
-
-  return {
-    completed: completions?.length || 0,
-    total: 4,
-    consumedCalories,
-    totalCalories,
-  };
 }
