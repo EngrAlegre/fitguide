@@ -49,6 +49,7 @@ export default function ProfileScreen() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [savingField, setSavingField] = useState<SavingField>(null);
   const [savedField, setSavedField] = useState<SavingField>(null);
+  const [previousCalories, setPreviousCalories] = useState<number | null>(null);
 
   // Temporary edit values
   const [tempAge, setTempAge] = useState('');
@@ -113,9 +114,11 @@ export default function ProfileScreen() {
     }
 
     setSavingField('age');
+    setPreviousCalories(profile?.daily_calorie_goal || null);
     try {
       await updateProfileMetrics({ age });
-      await loadProfile();
+      const updatedProfile = await getUserProfile();
+      setProfile(updatedProfile);
       setEditMode(null);
       setSavingField(null);
       setSavedField('age');
@@ -124,12 +127,25 @@ export default function ProfileScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 
+      // Show calorie update notification if changed
+      if (previousCalories && updatedProfile?.daily_calorie_goal &&
+          previousCalories !== updatedProfile.daily_calorie_goal) {
+        Alert.alert(
+          'Calories Updated',
+          `Your daily calorie goal has been recalculated to ${updatedProfile.daily_calorie_goal} calories based on your updated metrics.`
+        );
+      }
+
       // Clear saved indicator after 2 seconds
-      setTimeout(() => setSavedField(null), 2000);
-    } catch (error) {
+      setTimeout(() => {
+        setSavedField(null);
+        setPreviousCalories(null);
+      }, 2000);
+    } catch (error: any) {
       console.error('Error updating age:', error);
       setSavingField(null);
-      Alert.alert('Error', 'Failed to save age. Please check your connection and try again.');
+      const errorMessage = error?.message || 'Failed to save age. Please check your connection and try again.';
+      Alert.alert('Error', errorMessage);
     }
   };
 
@@ -141,9 +157,11 @@ export default function ProfileScreen() {
     }
 
     setSavingField('weight');
+    setPreviousCalories(profile?.daily_calorie_goal || null);
     try {
       await updateProfileMetrics({ weight });
-      await loadProfile();
+      const updatedProfile = await getUserProfile();
+      setProfile(updatedProfile);
       setEditMode(null);
       setSavingField(null);
       setSavedField('weight');
@@ -152,12 +170,25 @@ export default function ProfileScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 
+      // Show calorie update notification if changed
+      if (previousCalories && updatedProfile?.daily_calorie_goal &&
+          previousCalories !== updatedProfile.daily_calorie_goal) {
+        Alert.alert(
+          'Calories Updated',
+          `Your daily calorie goal has been recalculated to ${updatedProfile.daily_calorie_goal} calories based on your updated metrics.`
+        );
+      }
+
       // Clear saved indicator after 2 seconds
-      setTimeout(() => setSavedField(null), 2000);
-    } catch (error) {
+      setTimeout(() => {
+        setSavedField(null);
+        setPreviousCalories(null);
+      }, 2000);
+    } catch (error: any) {
       console.error('Error updating weight:', error);
       setSavingField(null);
-      Alert.alert('Error', 'Failed to save weight. Please check your connection and try again.');
+      const errorMessage = error?.message || 'Failed to save weight. Please check your connection and try again.';
+      Alert.alert('Error', errorMessage);
     }
   };
 
@@ -169,9 +200,11 @@ export default function ProfileScreen() {
     }
 
     setSavingField('height');
+    setPreviousCalories(profile?.daily_calorie_goal || null);
     try {
       await updateProfileMetrics({ height });
-      await loadProfile();
+      const updatedProfile = await getUserProfile();
+      setProfile(updatedProfile);
       setEditMode(null);
       setSavingField(null);
       setSavedField('height');
@@ -180,12 +213,25 @@ export default function ProfileScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 
+      // Show calorie update notification if changed
+      if (previousCalories && updatedProfile?.daily_calorie_goal &&
+          previousCalories !== updatedProfile.daily_calorie_goal) {
+        Alert.alert(
+          'Calories Updated',
+          `Your daily calorie goal has been recalculated to ${updatedProfile.daily_calorie_goal} calories based on your updated metrics.`
+        );
+      }
+
       // Clear saved indicator after 2 seconds
-      setTimeout(() => setSavedField(null), 2000);
-    } catch (error) {
+      setTimeout(() => {
+        setSavedField(null);
+        setPreviousCalories(null);
+      }, 2000);
+    } catch (error: any) {
       console.error('Error updating height:', error);
       setSavingField(null);
-      Alert.alert('Error', 'Failed to save height. Please check your connection and try again.');
+      const errorMessage = error?.message || 'Failed to save height. Please check your connection and try again.';
+      Alert.alert('Error', errorMessage);
     }
   };
 
@@ -195,9 +241,11 @@ export default function ProfileScreen() {
     }
 
     setSavingField('activityLevel');
+    setPreviousCalories(profile?.daily_calorie_goal || null);
     try {
       await updateActivityLevel(level);
-      await loadProfile();
+      const updatedProfile = await getUserProfile();
+      setProfile(updatedProfile);
       setEditMode(null);
       setSavingField(null);
       setSavedField('activityLevel');
@@ -206,12 +254,25 @@ export default function ProfileScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 
+      // Show calorie update notification if changed
+      if (previousCalories && updatedProfile?.daily_calorie_goal &&
+          previousCalories !== updatedProfile.daily_calorie_goal) {
+        Alert.alert(
+          'Calories Updated',
+          `Your daily calorie goal has been recalculated to ${updatedProfile.daily_calorie_goal} calories based on your updated activity level.`
+        );
+      }
+
       // Clear saved indicator after 2 seconds
-      setTimeout(() => setSavedField(null), 2000);
-    } catch (error) {
+      setTimeout(() => {
+        setSavedField(null);
+        setPreviousCalories(null);
+      }, 2000);
+    } catch (error: any) {
       console.error('Error updating activity level:', error);
       setSavingField(null);
-      Alert.alert('Error', 'Failed to save activity level. Please check your connection and try again.');
+      const errorMessage = error?.message || 'Failed to save activity level. Please check your connection and try again.';
+      Alert.alert('Error', errorMessage);
     }
   };
 
@@ -223,7 +284,8 @@ export default function ProfileScreen() {
     setSavingField('financialStatus');
     try {
       await updateFinancialStatus(status);
-      await loadProfile();
+      const updatedProfile = await getUserProfile();
+      setProfile(updatedProfile);
       setEditMode(null);
       setSavingField(null);
       setSavedField('financialStatus');
@@ -234,10 +296,11 @@ export default function ProfileScreen() {
 
       // Clear saved indicator after 2 seconds
       setTimeout(() => setSavedField(null), 2000);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating financial status:', error);
       setSavingField(null);
-      Alert.alert('Error', 'Failed to save budget preference. Please check your connection and try again.');
+      const errorMessage = error?.message || 'Failed to save budget preference. Please check your connection and try again.';
+      Alert.alert('Error', errorMessage);
     }
   };
 

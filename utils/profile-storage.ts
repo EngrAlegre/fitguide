@@ -1,5 +1,5 @@
-import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
+import { auth } from '../lib/firebase';
 import { OnboardingData, UserProfile } from '../types/profile';
 
 /**
@@ -60,29 +60,41 @@ function calculateCalorieGoal(data: OnboardingData): number {
 export async function saveUserProfile(data: OnboardingData): Promise<void> {
   const user = auth.currentUser;
   if (!user) {
+    console.error('saveUserProfile: No authenticated user');
     throw new Error('No authenticated user');
   }
 
   const calorieGoal = calculateCalorieGoal(data);
 
-  const profileData: Partial<UserProfile> = {
+  const profileData = {
+    id: user.uid,
     age: data.age,
     gender: data.gender,
     height: data.height,
     weight: data.weight,
-    activityLevel: data.activityLevel,
-    financialStatus: data.financialStatus,
-    fitnessGoal: data.fitnessGoal,
+    activity_level: data.activityLevel,
+    financial_status: data.financialStatus,
+    fitness_goal: data.fitnessGoal,
     daily_calorie_goal: calorieGoal,
     onboarding_completed: true,
     updated_at: new Date().toISOString(),
   };
 
-  await updateDoc(doc(db, 'user_profiles', user.uid), profileData);
+  console.log('saveUserProfile: Upserting profile for user:', user.uid);
+  const { error } = await supabase
+    .from('user_profiles')
+    .upsert(profileData, { onConflict: 'id' });
+
+  if (error) {
+    console.error('saveUserProfile: Error upserting profile:', error);
+    throw new Error(`Failed to save profile: ${error.message}`);
+  }
+
+  console.log('saveUserProfile: Profile saved successfully');
 }
 
 /**
- * Get user profile from Firestore
+ * Get user profile from Supabase
  */
 export async function getUserProfile(): Promise<UserProfile | null> {
   const user = auth.currentUser;
@@ -93,11 +105,40 @@ export async function getUserProfile(): Promise<UserProfile | null> {
 
   console.log('getUserProfile: Fetching profile for user:', user.uid);
   try {
-    const docRef = doc(db, 'user_profiles', user.uid);
-    const docSnap = await getDoc(docRef);
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('id', user.uid)
+      .single();
 
-    if (docSnap.exists()) {
-      const profile = docSnap.data() as UserProfile;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No rows returned
+        console.log('getUserProfile: Profile does not exist');
+        return null;
+      }
+      console.error('getUserProfile: Error fetching profile:', error);
+      throw new Error(`Failed to fetch profile: ${error.message}`);
+    }
+
+    if (data) {
+      // Map Supabase snake_case to camelCase for consistency
+      const profile: UserProfile = {
+        uid: data.id,
+        email: user.email || '',
+        age: data.age,
+        gender: data.gender,
+        height: data.height,
+        weight: data.weight,
+        activityLevel: data.activity_level,
+        financialStatus: data.financial_status,
+        fitnessGoal: data.fitness_goal,
+        daily_calorie_goal: data.daily_calorie_goal,
+        onboarding_completed: data.onboarding_completed,
+        created_at: data.created_at,
+        updated_at: data.updated_at,
+      };
+
       console.log('getUserProfile: Profile retrieved successfully:', {
         age: profile.age,
         weight: profile.weight,
@@ -109,10 +150,10 @@ export async function getUserProfile(): Promise<UserProfile | null> {
       return profile;
     }
 
-    console.log('getUserProfile: Profile document does not exist');
+    console.log('getUserProfile: No profile data returned');
     return null;
   } catch (error) {
-    console.error('getUserProfile: Error fetching profile:', error);
+    console.error('getUserProfile: Unexpected error:', error);
     throw error;
   }
 }

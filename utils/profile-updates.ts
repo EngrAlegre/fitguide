@@ -1,5 +1,5 @@
-import { doc, updateDoc, Timestamp } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
+import { auth } from '../lib/firebase';
 import { ActivityLevel, FinancialStatus, OnboardingData } from '../types/profile';
 import { getUserProfile } from './profile-storage';
 
@@ -111,10 +111,19 @@ export async function updateProfileMetrics(updates: {
 
   console.log('updateProfileMetrics: Updating profile with data:', updateData);
   try {
-    await updateDoc(doc(db, 'user_profiles', user.uid), updateData);
+    const { error } = await supabase
+      .from('user_profiles')
+      .update(updateData)
+      .eq('id', user.uid);
+
+    if (error) {
+      console.error('updateProfileMetrics: Failed to update profile:', error);
+      throw new Error(`Failed to update profile: ${error.message}`);
+    }
+
     console.log('updateProfileMetrics: Successfully updated profile');
   } catch (error) {
-    console.error('updateProfileMetrics: Failed to update profile:', error);
+    console.error('updateProfileMetrics: Unexpected error:', error);
     throw error;
   }
 }
@@ -137,7 +146,7 @@ export async function updateActivityLevel(activityLevel: ActivityLevel): Promise
   }
 
   const updateData: any = {
-    activityLevel,
+    activity_level: activityLevel,
     updated_at: new Date().toISOString(),
   };
 
@@ -164,10 +173,19 @@ export async function updateActivityLevel(activityLevel: ActivityLevel): Promise
 
   console.log('updateActivityLevel: Updating profile with data:', updateData);
   try {
-    await updateDoc(doc(db, 'user_profiles', user.uid), updateData);
+    const { error } = await supabase
+      .from('user_profiles')
+      .update(updateData)
+      .eq('id', user.uid);
+
+    if (error) {
+      console.error('updateActivityLevel: Failed to update profile:', error);
+      throw new Error(`Failed to update activity level: ${error.message}`);
+    }
+
     console.log('updateActivityLevel: Successfully updated profile');
   } catch (error) {
-    console.error('updateActivityLevel: Failed to update profile:', error);
+    console.error('updateActivityLevel: Unexpected error:', error);
     throw error;
   }
 }
@@ -183,16 +201,25 @@ export async function updateFinancialStatus(financialStatus: FinancialStatus): P
   }
 
   const updateData = {
-    financialStatus,
+    financial_status: financialStatus,
     updated_at: new Date().toISOString(),
   };
 
   console.log('updateFinancialStatus: Updating profile with data:', updateData);
   try {
-    await updateDoc(doc(db, 'user_profiles', user.uid), updateData);
+    const { error } = await supabase
+      .from('user_profiles')
+      .update(updateData)
+      .eq('id', user.uid);
+
+    if (error) {
+      console.error('updateFinancialStatus: Failed to update profile:', error);
+      throw new Error(`Failed to update financial status: ${error.message}`);
+    }
+
     console.log('updateFinancialStatus: Successfully updated profile');
   } catch (error) {
-    console.error('updateFinancialStatus: Failed to update profile:', error);
+    console.error('updateFinancialStatus: Unexpected error:', error);
     throw error;
   }
 }
@@ -205,16 +232,19 @@ export async function updateFitnessGoal(
 ): Promise<void> {
   const user = auth.currentUser;
   if (!user) {
+    console.error('updateFitnessGoal: No authenticated user');
     throw new Error('No authenticated user');
   }
 
+  console.log('updateFitnessGoal: Fetching current profile for user:', user.uid);
   const profile = await getUserProfile();
   if (!profile) {
+    console.error('updateFitnessGoal: Profile not found for user:', user.uid);
     throw new Error('Profile not found');
   }
 
   const updateData: any = {
-    fitnessGoal,
+    fitness_goal: fitnessGoal,
     updated_at: new Date().toISOString(),
   };
 
@@ -236,7 +266,24 @@ export async function updateFitnessGoal(
     });
 
     updateData.daily_calorie_goal = newCalorieGoal;
+    console.log('updateFitnessGoal: Recalculated calorie goal:', newCalorieGoal);
   }
 
-  await updateDoc(doc(db, 'user_profiles', user.uid), updateData);
+  console.log('updateFitnessGoal: Updating profile with data:', updateData);
+  try {
+    const { error } = await supabase
+      .from('user_profiles')
+      .update(updateData)
+      .eq('id', user.uid);
+
+    if (error) {
+      console.error('updateFitnessGoal: Failed to update profile:', error);
+      throw new Error(`Failed to update fitness goal: ${error.message}`);
+    }
+
+    console.log('updateFitnessGoal: Successfully updated profile');
+  } catch (error) {
+    console.error('updateFitnessGoal: Unexpected error:', error);
+    throw error;
+  }
 }
