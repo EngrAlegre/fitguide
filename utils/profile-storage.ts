@@ -123,13 +123,14 @@ export async function getUserProfile(): Promise<UserProfile | null> {
 
     if (data) {
       // Map Supabase snake_case to camelCase for consistency
+      // Convert numeric fields (Postgres numeric type returns as string)
       const profile: UserProfile = {
         uid: data.id,
         email: user.email || '',
         age: data.age,
         gender: data.gender,
-        height: data.height,
-        weight: data.weight,
+        height: data.height ? parseFloat(data.height) : undefined,
+        weight: data.weight ? parseFloat(data.weight) : undefined,
         activityLevel: data.activity_level,
         financialStatus: data.financial_status,
         fitnessGoal: data.fitness_goal,

@@ -111,17 +111,23 @@ export async function updateProfileMetrics(updates: {
 
   console.log('updateProfileMetrics: Updating profile with data:', updateData);
   try {
-    const { error } = await supabase
+    const { data: updatedData, error } = await supabase
       .from('user_profiles')
       .update(updateData)
-      .eq('id', user.uid);
+      .eq('id', user.uid)
+      .select();
 
     if (error) {
       console.error('updateProfileMetrics: Failed to update profile:', error);
       throw new Error(`Failed to update profile: ${error.message}`);
     }
 
-    console.log('updateProfileMetrics: Successfully updated profile');
+    if (!updatedData || updatedData.length === 0) {
+      console.error('updateProfileMetrics: No rows were updated');
+      throw new Error('Failed to update profile: No rows affected');
+    }
+
+    console.log('updateProfileMetrics: Successfully updated profile:', updatedData[0]);
   } catch (error) {
     console.error('updateProfileMetrics: Unexpected error:', error);
     throw error;
@@ -173,17 +179,23 @@ export async function updateActivityLevel(activityLevel: ActivityLevel): Promise
 
   console.log('updateActivityLevel: Updating profile with data:', updateData);
   try {
-    const { error } = await supabase
+    const { data: updatedData, error } = await supabase
       .from('user_profiles')
       .update(updateData)
-      .eq('id', user.uid);
+      .eq('id', user.uid)
+      .select();
 
     if (error) {
       console.error('updateActivityLevel: Failed to update profile:', error);
       throw new Error(`Failed to update activity level: ${error.message}`);
     }
 
-    console.log('updateActivityLevel: Successfully updated profile');
+    if (!updatedData || updatedData.length === 0) {
+      console.error('updateActivityLevel: No rows were updated');
+      throw new Error('Failed to update activity level: No rows affected');
+    }
+
+    console.log('updateActivityLevel: Successfully updated profile:', updatedData[0]);
   } catch (error) {
     console.error('updateActivityLevel: Unexpected error:', error);
     throw error;
@@ -207,17 +219,23 @@ export async function updateFinancialStatus(financialStatus: FinancialStatus): P
 
   console.log('updateFinancialStatus: Updating profile with data:', updateData);
   try {
-    const { error } = await supabase
+    const { data: updatedData, error } = await supabase
       .from('user_profiles')
       .update(updateData)
-      .eq('id', user.uid);
+      .eq('id', user.uid)
+      .select();
 
     if (error) {
       console.error('updateFinancialStatus: Failed to update profile:', error);
       throw new Error(`Failed to update financial status: ${error.message}`);
     }
 
-    console.log('updateFinancialStatus: Successfully updated profile');
+    if (!updatedData || updatedData.length === 0) {
+      console.error('updateFinancialStatus: No rows were updated');
+      throw new Error('Failed to update financial status: No rows affected');
+    }
+
+    console.log('updateFinancialStatus: Successfully updated profile:', updatedData[0]);
   } catch (error) {
     console.error('updateFinancialStatus: Unexpected error:', error);
     throw error;
@@ -271,17 +289,23 @@ export async function updateFitnessGoal(
 
   console.log('updateFitnessGoal: Updating profile with data:', updateData);
   try {
-    const { error } = await supabase
+    const { data: updatedData, error } = await supabase
       .from('user_profiles')
       .update(updateData)
-      .eq('id', user.uid);
+      .eq('id', user.uid)
+      .select();
 
     if (error) {
       console.error('updateFitnessGoal: Failed to update profile:', error);
       throw new Error(`Failed to update fitness goal: ${error.message}`);
     }
 
-    console.log('updateFitnessGoal: Successfully updated profile');
+    if (!updatedData || updatedData.length === 0) {
+      console.error('updateFitnessGoal: No rows were updated');
+      throw new Error('Failed to update fitness goal: No rows affected');
+    }
+
+    console.log('updateFitnessGoal: Successfully updated profile:', updatedData[0]);
   } catch (error) {
     console.error('updateFitnessGoal: Unexpected error:', error);
     throw error;
