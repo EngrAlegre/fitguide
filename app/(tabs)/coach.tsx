@@ -9,11 +9,17 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useTextGeneration } from '@fastshot/ai';
 import { Colors, Fonts, Spacing, BorderRadius } from '../../constants/theme';
+import { useFirebaseAuth } from '../../lib/firebase-auth-provider';
+import { supabase } from '../../lib/supabase';
+import { getUserProfile } from '../../utils/profile-storage';
+import { UserProfile } from '../../types/profile';
 
 interface Message {
   id: string;
@@ -22,57 +28,47 @@ interface Message {
   timestamp: number;
 }
 
-const SYSTEM_PROMPT = `You are a proactive AI fitness advisor specializing in BUDGET-FRIENDLY, HOME-BASED fitness and nutrition. Your mission is to help people achieve their health goals without expensive gyms, equipment, or supplements.
+interface DateGroup {
+  date: string;
+  label: string;
+  messages: Message[];
+}
 
-Your expertise includes:
-- Bodyweight exercises and home workouts (push-ups, squats, lunges, planks, burpees, etc.)
-- DIY fitness solutions using household items (water bottles as weights, chairs for dips, stairs for cardio)
-- Budget-friendly nutrition (eggs, lentils, beans, rice, chicken, affordable vegetables)
-- Meal prep on a budget (batch cooking, simple recipes, protein-rich cheap meals)
-- Zero-cost fitness motivation and mental strategies
-
-Your coaching style is:
-- PROACTIVE: Offer specific tips and workout ideas without being asked
-- ACCESSIBLE: Focus only on exercises that need zero or minimal equipment
-- BUDGET-CONSCIOUS: Suggest meals under $5, protein sources under $2/lb
-- PRACTICAL: Give exact workout routines (sets, reps, rest) that can be done at home
-- ENCOURAGING: Emphasize that fitness doesn't require money, just commitment
-
-When giving workout advice:
-- Specify exact exercises, sets, reps, and rest periods
-- Focus on bodyweight movements and household items
-- Include warm-up and cool-down suggestions
-
-When giving nutrition advice:
-- Prioritize affordable protein (eggs, lentils, beans, canned tuna, chicken thighs)
-- Suggest specific budget meals with estimated costs
-- Focus on whole foods over expensive supplements
-- Give practical grocery shopping tips
-
-Keep responses concise (2-3 short paragraphs max). Always be specific and actionable.`;
+const SUGGESTION_CHIPS = [
+  { text: 'Summarize my progress', icon: 'analytics' as const },
+  { text: 'Update my goals', icon: 'trophy' as const },
+  { text: 'Plan today\'s workout', icon: 'barbell' as const },
+  { text: 'Nutrition tips', icon: 'restaurant' as const },
+];
 
 export default function CoachScreen() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '0',
-      role: 'assistant',
-      content:
-        "Hey! I'm your AI Fitness Advisor. I specialize in home workouts and budget nutrition - no gym or fancy equipment needed! Want a quick bodyweight circuit? Or maybe some tips on cheap, high-protein meals? Let's build your fitness without breaking the bank! 💪",
-      timestamp: Date.now(),
-    },
-  ]);
+  const { user } = useFirebaseAuth();
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const scrollViewRef = useRef<ScrollView>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
 
   const { generateText, isLoading } = useTextGeneration({
-    onSuccess: (response) => {
+    onSuccess: async (response) => {
       const assistantMessage: Message = {
         id: Date.now().toString(),
         role: 'assistant',
         content: response,
         timestamp: Date.now(),
       };
+
       setMessages((prev) => [...prev, assistantMessage]);
+
+      // Save assistant message to database
+      if (user) {
+        await saveMessageToDatabase(assistantMessage);
+      }
+
+      // Haptic feedback for received message
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
     },
     onError: (error) => {
       const errorMessage: Message = {
@@ -83,18 +79,151 @@ export default function CoachScreen() {
       };
       setMessages((prev) => [...prev, errorMessage]);
       console.error('AI Error:', error);
+
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
     },
   });
 
+  // Load chat history from database
   useEffect(() => {
-    // Scroll to bottom when messages change
+    if (user) {
+      loadChatHistory();
+      loadProfile();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
     setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
   }, [messages]);
 
+  const loadProfile = async () => {
+    try {
+      const profileData = await getUserProfile();
+      setProfile(profileData);
+    } catch (error) {
+      console.error('Error loading profile:', error);
+    }
+  };
+
+  const loadChatHistory = async () => {
+    if (!user) return;
+
+    try {
+      setIsLoadingHistory(true);
+
+      // Set user_id for RLS
+      await supabase.rpc('set_user_id', { user_id: user.uid });
+
+      const { data, error } = await supabase
+        .from('coach_messages')
+        .select('*')
+        .eq('user_id', user.uid)
+        .order('timestamp', { ascending: true });
+
+      if (error) {
+        console.error('Error loading chat history:', error);
+        // Show welcome message if can't load history
+        setMessages([getWelcomeMessage()]);
+      } else if (data && data.length > 0) {
+        const loadedMessages: Message[] = data.map((row) => ({
+          id: row.id,
+          role: row.role,
+          content: row.content,
+          timestamp: row.timestamp,
+        }));
+        setMessages(loadedMessages);
+      } else {
+        // First time user - show welcome message
+        const welcomeMsg = getWelcomeMessage();
+        setMessages([welcomeMsg]);
+        await saveMessageToDatabase(welcomeMsg);
+      }
+    } catch (error) {
+      console.error('Error in loadChatHistory:', error);
+      setMessages([getWelcomeMessage()]);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const getWelcomeMessage = (): Message => ({
+    id: '0',
+    role: 'assistant',
+    content:
+      "Hey! I'm your personal AI Coach with a memory like an elephant 🐘. I'll remember everything about your fitness journey - your goals, progress, challenges, and wins. Think of me as your premium 1-on-1 personal training concierge. Let's get started!",
+    timestamp: Date.now(),
+  });
+
+  const saveMessageToDatabase = async (message: Message) => {
+    if (!user) return;
+
+    try {
+      // Set user_id for RLS
+      await supabase.rpc('set_user_id', { user_id: user.uid });
+
+      const { error } = await supabase.from('coach_messages').insert({
+        user_id: user.uid,
+        role: message.role,
+        content: message.content,
+        timestamp: message.timestamp,
+        user_context: profile
+          ? {
+              age: profile.age,
+              weight: profile.weight,
+              height: profile.height,
+              goals: profile.fitnessGoal,
+              activity_level: profile.activityLevel,
+              financial_status: profile.financialStatus,
+              daily_calories: profile.daily_calorie_goal,
+            }
+          : null,
+      });
+
+      if (error) {
+        console.error('Error saving message:', error);
+      }
+    } catch (error) {
+      console.error('Error in saveMessageToDatabase:', error);
+    }
+  };
+
+  const buildContextPrompt = (): string => {
+    if (!profile) return '';
+
+    const contextParts = [
+      `\n\n=== USER PROFILE & CONTEXT ===`,
+      `Name: ${user?.email?.split('@')[0] || 'User'}`,
+      `Age: ${profile.age || 'Unknown'} years`,
+      `Weight: ${profile.weight || 'Unknown'} kg`,
+      `Height: ${profile.height || 'Unknown'} cm`,
+      `Fitness Goal: ${profile.fitnessGoal || 'Not set'}`,
+      `Activity Level: ${profile.activityLevel || 'Unknown'}`,
+      `Budget: ${profile.financialStatus || 'Unknown'}`,
+      `Daily Calorie Goal: ${profile.daily_calorie_goal || 'Unknown'} cal`,
+      `\n=== CONVERSATION HISTORY (Last 10 messages) ===`,
+    ];
+
+    // Add last 10 messages for context
+    const recentMessages = messages.slice(-10);
+    recentMessages.forEach((msg) => {
+      contextParts.push(`${msg.role === 'user' ? 'User' : 'Coach'}: ${msg.content}`);
+    });
+
+    return contextParts.join('\n');
+  };
+
   const handleSend = async () => {
     if (!inputText.trim() || isLoading) return;
+
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -106,22 +235,85 @@ export default function CoachScreen() {
     setMessages((prev) => [...prev, userMessage]);
     setInputText('');
 
-    // Build conversation history
-    const conversationHistory = messages
-      .slice(-6) // Last 6 messages for context
-      .map((msg) => `${msg.role === 'user' ? 'User' : 'Coach'}: ${msg.content}`)
-      .join('\n\n');
+    // Save user message to database
+    if (user) {
+      await saveMessageToDatabase(userMessage);
+    }
 
-    const fullPrompt = `${SYSTEM_PROMPT}
+    // Build comprehensive context for AI
+    const contextPrompt = buildContextPrompt();
 
-Previous conversation:
-${conversationHistory}
+    const systemPrompt = `You are a premium AI Fitness Coach with deep memory and context awareness. You remember EVERYTHING about this user's journey.
 
-User: ${userMessage.content}
+YOUR COACHING STYLE:
+- Proactive & Personal: Reference past conversations, celebrate progress, acknowledge challenges
+- Budget-Conscious: Focus on home workouts and affordable nutrition
+- Contextual: Always consider their profile, goals, and history
+- Encouraging: Be supportive but honest
+- Concise: Keep responses 2-3 short paragraphs max
 
-Coach:`;
+MEMORY GUIDELINES:
+- Reference specific past events ("Remember when you mentioned...")
+- Celebrate milestones and streaks
+- Notice patterns in their behavior
+- Adapt advice based on their progress
 
-    await generateText(fullPrompt);
+AREAS OF EXPERTISE:
+- Home-based bodyweight exercises (no gym needed)
+- Budget nutrition (affordable protein, meal prep under $50/week)
+- Progress tracking and goal setting
+- Motivation and mental strategies
+${contextPrompt}
+
+User's new message: ${userMessage.content}
+
+Respond as their personal coach who truly knows them:`;
+
+    await generateText(systemPrompt);
+  };
+
+  const handleQuickAction = (text: string) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setInputText(text);
+  };
+
+  // Group messages by date
+  const groupMessagesByDate = (): DateGroup[] => {
+    const groups: { [key: string]: Message[] } = {};
+
+    messages.forEach((msg) => {
+      const date = new Date(msg.timestamp);
+      const dateKey = date.toISOString().split('T')[0];
+
+      if (!groups[dateKey]) {
+        groups[dateKey] = [];
+      }
+      groups[dateKey].push(msg);
+    });
+
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+    return Object.keys(groups)
+      .sort()
+      .map((dateKey) => {
+        let label = 'Older';
+        if (dateKey === today) label = 'Today';
+        else if (dateKey === yesterday) label = 'Yesterday';
+        else {
+          const date = new Date(dateKey);
+          const daysDiff = Math.floor((Date.now() - date.getTime()) / 86400000);
+          if (daysDiff <= 7) label = 'Last Week';
+        }
+
+        return {
+          date: dateKey,
+          label,
+          messages: groups[dateKey],
+        };
+      });
   };
 
   const formatTime = (timestamp: number) => {
@@ -129,16 +321,19 @@ Coach:`;
     return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   };
 
-  const quickPrompts = [
-    'Give me a 20-min home HIIT workout',
-    'What cheap foods are high in protein?',
-    'Best bodyweight exercises for beginners?',
-    'Budget meal prep ideas for the week',
-  ];
+  if (isLoadingHistory) {
+    return (
+      <View style={styles.container}>
+        <StatusBar style="light" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.accent} />
+          <Text style={styles.loadingText}>Loading your conversation...</Text>
+        </View>
+      </View>
+    );
+  }
 
-  const handleQuickPrompt = (prompt: string) => {
-    setInputText(prompt);
-  };
+  const dateGroups = groupMessagesByDate();
 
   return (
     <KeyboardAvoidingView
@@ -148,15 +343,18 @@ Coach:`;
     >
       <StatusBar style="light" />
 
-      {/* Header */}
+      {/* Premium Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
-          <View style={styles.logoContainer}>
-            <Ionicons name="fitness" size={24} color={Colors.accent} />
+          <View style={styles.coachBadge}>
+            <Ionicons name="sparkles" size={20} color={Colors.background} />
           </View>
           <View style={styles.headerText}>
-            <Text style={styles.title}>NEWELL AI COACH</Text>
-            <Text style={styles.subtitle}>Powered by Newell AI Gateway</Text>
+            <Text style={styles.title}>AI COACH</Text>
+            <View style={styles.statusRow}>
+              <View style={styles.statusDot} />
+              <Text style={styles.subtitle}>Always remembering • Always learning</Text>
+            </View>
           </View>
         </View>
       </View>
@@ -168,66 +366,51 @@ Coach:`;
         contentContainerStyle={styles.messagesContent}
         showsVerticalScrollIndicator={false}
       >
-        {messages.map((message) => (
-          <View
-            key={message.id}
-            style={[
-              styles.messageWrapper,
-              message.role === 'user' ? styles.userMessageWrapper : styles.assistantMessageWrapper,
-            ]}
-          >
-            <View
-              style={[
-                styles.messageBubble,
-                message.role === 'user' ? styles.userBubble : styles.assistantBubble,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.messageText,
-                  message.role === 'user' ? styles.userText : styles.assistantText,
-                ]}
-              >
-                {message.content}
-              </Text>
-              <Text
-                style={[
-                  styles.messageTime,
-                  message.role === 'user' ? styles.userTime : styles.assistantTime,
-                ]}
-              >
-                {formatTime(message.timestamp)}
-              </Text>
+        {dateGroups.map((group) => (
+          <View key={group.date}>
+            {/* Date Separator */}
+            <View style={styles.dateSeparator}>
+              <View style={styles.dateLine} />
+              <Text style={styles.dateLabel}>{group.label}</Text>
+              <View style={styles.dateLine} />
             </View>
+
+            {/* Messages in this date group */}
+            {group.messages.map((message, index) => (
+              <MessageBubble
+                key={message.id}
+                message={message}
+                isLast={index === group.messages.length - 1}
+                formatTime={formatTime}
+              />
+            ))}
           </View>
         ))}
 
-        {isLoading && (
-          <View style={styles.loadingContainer}>
-            <View style={styles.loadingBubble}>
-              <ActivityIndicator color={Colors.accent} />
-              <Text style={styles.loadingText}>Coach is typing...</Text>
-            </View>
-          </View>
-        )}
-
-        {/* Quick Prompts (only show if no messages except welcome) */}
-        {messages.length === 1 && (
-          <View style={styles.quickPromptsContainer}>
-            <Text style={styles.quickPromptsTitle}>Try asking:</Text>
-            {quickPrompts.map((prompt, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.quickPrompt}
-                onPress={() => handleQuickPrompt(prompt)}
-              >
-                <Text style={styles.quickPromptText}>{prompt}</Text>
-                <Ionicons name="arrow-forward" size={16} color={Colors.accent} />
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
+        {/* Typing Indicator */}
+        {isLoading && <TypingIndicator />}
       </ScrollView>
+
+      {/* Quick Action Chips */}
+      {!isLoading && (
+        <ScrollView
+          horizontal
+          style={styles.chipsContainer}
+          contentContainerStyle={styles.chipsContent}
+          showsHorizontalScrollIndicator={false}
+        >
+          {SUGGESTION_CHIPS.map((chip, index) => (
+            <TouchableOpacity
+              key={index}
+              style={styles.chip}
+              onPress={() => handleQuickAction(chip.text)}
+            >
+              <Ionicons name={chip.icon} size={16} color={Colors.accent} />
+              <Text style={styles.chipText}>{chip.text}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
 
       {/* Input */}
       <View style={styles.inputContainer}>
@@ -235,7 +418,7 @@ Coach:`;
           style={styles.input}
           value={inputText}
           onChangeText={setInputText}
-          placeholder="Type your message..."
+          placeholder="Message your coach..."
           placeholderTextColor={Colors.textSecondary}
           multiline
           maxLength={500}
@@ -260,10 +443,143 @@ Coach:`;
   );
 }
 
+// Message Bubble Component with Animation
+const MessageBubble: React.FC<{
+  message: Message;
+  isLast: boolean;
+  formatTime: (timestamp: number) => string;
+}> = ({ message, isLast, formatTime }) => {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(20)).current;
+
+  useEffect(() => {
+    if (isLast) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLast]);
+
+  const animatedStyle = isLast
+    ? {
+        opacity: fadeAnim,
+        transform: [{ translateY: slideAnim }],
+      }
+    : {};
+
+  return (
+    <Animated.View
+      style={[
+        styles.messageWrapper,
+        message.role === 'user' ? styles.userMessageWrapper : styles.assistantMessageWrapper,
+        animatedStyle,
+      ]}
+    >
+      {message.role === 'assistant' && (
+        <View style={styles.coachAvatar}>
+          <Ionicons name="sparkles" size={16} color={Colors.background} />
+        </View>
+      )}
+      <View
+        style={[
+          styles.messageBubble,
+          message.role === 'user' ? styles.userBubble : styles.assistantBubble,
+        ]}
+      >
+        <Text
+          style={[
+            styles.messageText,
+            message.role === 'user' ? styles.userText : styles.assistantText,
+          ]}
+        >
+          {message.content}
+        </Text>
+        <Text
+          style={[
+            styles.messageTime,
+            message.role === 'user' ? styles.userTime : styles.assistantTime,
+          ]}
+        >
+          {formatTime(message.timestamp)}
+        </Text>
+      </View>
+    </Animated.View>
+  );
+};
+
+// Typing Indicator Component
+const TypingIndicator: React.FC = () => {
+  const dot1 = useRef(new Animated.Value(0)).current;
+  const dot2 = useRef(new Animated.Value(0)).current;
+  const dot3 = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animate = (dot: Animated.Value, delay: number) => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(dot, {
+            toValue: -8,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+          Animated.timing(dot, {
+            toValue: 0,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    };
+
+    animate(dot1, 0);
+    animate(dot2, 150);
+    animate(dot3, 300);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <View style={styles.typingContainer}>
+      <View style={styles.coachAvatar}>
+        <Ionicons name="sparkles" size={16} color={Colors.background} />
+      </View>
+      <View style={styles.typingBubble}>
+        <View style={styles.typingDots}>
+          <Animated.View style={[styles.typingDot, { transform: [{ translateY: dot1 }] }]} />
+          <Animated.View style={[styles.typingDot, { transform: [{ translateY: dot2 }] }]} />
+          <Animated.View style={[styles.typingDot, { transform: [{ translateY: dot3 }] }]} />
+        </View>
+      </View>
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.md,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    ...Fonts.body,
   },
   header: {
     paddingTop: Spacing.xxl + 20,
@@ -271,32 +587,44 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
+    backgroundColor: Colors.background,
   },
   headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: Spacing.md,
   },
-  logoContainer: {
+  coachBadge: {
     width: 48,
     height: 48,
-    borderRadius: BorderRadius.md,
-    backgroundColor: `${Colors.accent}20`,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: Spacing.md,
   },
   headerText: {
     flex: 1,
   },
   title: {
-    fontSize: 18,
+    fontSize: 20,
     color: Colors.textPrimary,
     ...Fonts.heading,
-    letterSpacing: 1,
-    marginBottom: 2,
+    letterSpacing: 2,
+    marginBottom: 4,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.success,
   },
   subtitle: {
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.textSecondary,
     ...Fonts.body,
   },
@@ -307,17 +635,47 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     paddingBottom: Spacing.xl,
   },
+  dateSeparator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  dateLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: Colors.border,
+  },
+  dateLabel: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    ...Fonts.data,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
   messageWrapper: {
     marginBottom: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: Spacing.xs,
   },
   userMessageWrapper: {
-    alignItems: 'flex-end',
+    justifyContent: 'flex-end',
   },
   assistantMessageWrapper: {
-    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+  },
+  coachAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
   },
   messageBubble: {
-    maxWidth: '85%',
+    maxWidth: '75%',
     padding: Spacing.md,
     borderRadius: BorderRadius.md,
   },
@@ -352,49 +710,54 @@ const styles = StyleSheet.create({
   assistantTime: {
     color: Colors.textSecondary,
   },
-  loadingContainer: {
-    alignItems: 'flex-start',
+  typingContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: Spacing.xs,
     marginBottom: Spacing.md,
   },
-  loadingBubble: {
+  typingBubble: {
     backgroundColor: Colors.cardBg,
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  typingDots: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+  },
+  typingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.accent,
+  },
+  chipsContainer: {
+    maxHeight: 50,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  chipsContent: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
     gap: Spacing.sm,
   },
-  loadingText: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    ...Fonts.body,
-  },
-  quickPromptsContainer: {
-    marginTop: Spacing.lg,
-  },
-  quickPromptsTitle: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    ...Fonts.data,
-    letterSpacing: 1,
-    marginBottom: Spacing.md,
-  },
-  quickPrompt: {
-    backgroundColor: Colors.cardBg,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.sm,
+  chip: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: Spacing.xs,
+    backgroundColor: Colors.cardBg,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  quickPromptText: {
-    fontSize: 14,
+  chipText: {
+    fontSize: 13,
     color: Colors.textPrimary,
     ...Fonts.body,
-    flex: 1,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -423,9 +786,15 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: Colors.accent,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
   sendButtonDisabled: {
     backgroundColor: Colors.cardBg,
     opacity: 0.5,
+    shadowOpacity: 0,
   },
 });
