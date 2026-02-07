@@ -10,6 +10,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
+import Animated, { FadeOut, ZoomIn } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,8 +18,9 @@ import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors, Fonts, Spacing, BorderRadius } from '../../constants/theme';
 import { MealPlan, Meal, DayPlan, BUDGET_CATEGORY_LABELS, MEAL_TYPE_LABELS } from '../../types/mealPlan';
-import { generateMealPlan, getLatestMealPlan, markMealAsCompleted } from '../../services/mealPlanService';
+import { generateMealPlan, getLatestMealPlan, markMealAsCompleted, unmarkMealAsCompleted } from '../../services/mealPlanService';
 import MealPlanSkeleton from '../../components/MealPlanSkeleton';
+import DailyProgressBar from '../../components/DailyProgressBar';
 import { getUserProfile } from '../../utils/profile-storage';
 import { UserProfile } from '../../types/profile';
 
@@ -29,6 +31,7 @@ export default function FoodScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [completingMeals, setCompletingMeals] = useState<Set<string>>(new Set());
 
   const loadMealPlan = async () => {
     try {
@@ -126,22 +129,146 @@ export default function FoodScreen() {
   const handleCheckOffMeal = async (dayNumber: number, mealType: string, meal: Meal) => {
     if (!mealPlan) return;
 
+    const mealKey = `${dayNumber}_${mealType}`;
+
+    // Check if already completing
+    if (completingMeals.has(mealKey)) return;
+
+    // Haptic feedback for user action
     if (Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
 
-    try {
-      await markMealAsCompleted(mealPlan.id, dayNumber, mealType as any);
+    // Optimistic UI update
+    const updatedPlan = { ...mealPlan };
+    const day = updatedPlan.days.find((d) => d.dayNumber === dayNumber);
+    if (day) {
+      (day as any)[mealType].isCompleted = true;
+      setMealPlan(updatedPlan);
+    }
 
-      // Update local state
-      const updatedPlan = { ...mealPlan };
-      const day = updatedPlan.days.find((d) => d.dayNumber === dayNumber);
-      if (day) {
-        (day as any)[mealType].isCompleted = true;
-        setMealPlan(updatedPlan);
+    // Mark as completing
+    setCompletingMeals((prev) => new Set(prev).add(mealKey));
+
+    try {
+      // Backend save with verification
+      const result = await markMealAsCompleted(
+        mealPlan.id,
+        dayNumber,
+        mealType as any,
+        meal.calories
+      );
+
+      if (result.success) {
+        // Success haptic feedback
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+      } else {
+        // Revert optimistic update on error
+        const revertedPlan = { ...mealPlan };
+        const revertDay = revertedPlan.days.find((d) => d.dayNumber === dayNumber);
+        if (revertDay) {
+          (revertDay as any)[mealType].isCompleted = false;
+          setMealPlan(revertedPlan);
+        }
+
+        // Error haptic feedback
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        }
+
+        Alert.alert(
+          'Unable to Save',
+          result.error || 'Could not save meal completion. Please check your connection and try again.',
+          [{ text: 'Retry', onPress: () => handleCheckOffMeal(dayNumber, mealType, meal) }, { text: 'Cancel' }]
+        );
+      }
+    } catch (error: any) {
+      console.error('Error marking meal as completed:', error);
+
+      // Revert optimistic update
+      const revertedPlan = { ...mealPlan };
+      const revertDay = revertedPlan.days.find((d) => d.dayNumber === dayNumber);
+      if (revertDay) {
+        (revertDay as any)[mealType].isCompleted = false;
+        setMealPlan(revertedPlan);
+      }
+
+      // Error haptic feedback
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+
+      Alert.alert(
+        'Connection Error',
+        'Unable to save your progress. Please check your internet connection.',
+        [{ text: 'Retry', onPress: () => handleCheckOffMeal(dayNumber, mealType, meal) }, { text: 'Cancel' }]
+      );
+    } finally {
+      // Remove from completing set
+      setCompletingMeals((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(mealKey);
+        return newSet;
+      });
+    }
+  };
+
+  const handleUncheckMeal = async (dayNumber: number, mealType: string, meal: Meal) => {
+    if (!mealPlan) return;
+
+    const mealKey = `${dayNumber}_${mealType}`;
+
+    // Check if already completing
+    if (completingMeals.has(mealKey)) return;
+
+    // Haptic feedback
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+
+    // Optimistic UI update
+    const updatedPlan = { ...mealPlan };
+    const day = updatedPlan.days.find((d) => d.dayNumber === dayNumber);
+    if (day) {
+      (day as any)[mealType].isCompleted = false;
+      setMealPlan(updatedPlan);
+    }
+
+    // Mark as completing
+    setCompletingMeals((prev) => new Set(prev).add(mealKey));
+
+    try {
+      const result = await unmarkMealAsCompleted(mealPlan.id, dayNumber, mealType as any);
+
+      if (!result.success) {
+        // Revert on error
+        const revertedPlan = { ...mealPlan };
+        const revertDay = revertedPlan.days.find((d) => d.dayNumber === dayNumber);
+        if (revertDay) {
+          (revertDay as any)[mealType].isCompleted = true;
+          setMealPlan(revertedPlan);
+        }
+
+        Alert.alert('Error', result.error || 'Failed to update meal status');
       }
     } catch (error) {
-      console.error('Error marking meal as completed:', error);
+      console.error('Error unmarking meal:', error);
+
+      // Revert on error
+      const revertedPlan = { ...mealPlan };
+      const revertDay = revertedPlan.days.find((d) => d.dayNumber === dayNumber);
+      if (revertDay) {
+        (revertDay as any)[mealType].isCompleted = true;
+        setMealPlan(revertedPlan);
+      }
+    } finally {
+      setCompletingMeals((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(mealKey);
+        return newSet;
+      });
     }
   };
 
@@ -271,8 +398,12 @@ export default function FoodScreen() {
 
         {/* Days */}
         {mealPlan.days.map((day: DayPlan) => {
-          // Calculate total daily calories
+          // Calculate total daily calories and progress
           const totalCalories = day.breakfast.calories + day.lunch.calories + day.dinner.calories + day.snacks.calories;
+          const completedMeals = [day.breakfast, day.lunch, day.dinner, day.snacks].filter((m) => m.isCompleted).length;
+          const consumedCalories = [day.breakfast, day.lunch, day.dinner, day.snacks]
+            .filter((m) => m.isCompleted)
+            .reduce((sum, m) => sum + m.calories, 0);
 
           return (
             <View key={day.dayNumber} style={styles.daySection}>
@@ -283,6 +414,14 @@ export default function FoodScreen() {
                   <Text style={styles.dayCaloriesText}>{totalCalories} cal</Text>
                 </View>
               </View>
+
+              {/* Daily Progress Bar */}
+              <DailyProgressBar
+                completed={completedMeals}
+                total={4}
+                consumedCalories={consumedCalories}
+                goalCalories={totalCalories}
+              />
 
               {/* Meals */}
               <View style={styles.mealsGrid}>
@@ -297,11 +436,22 @@ export default function FoodScreen() {
                     >
                       {/* Meal Image */}
                       <View style={styles.mealImageContainer}>
-                        <Image source={{ uri: meal.imageUrl }} style={styles.mealImage} resizeMode="cover" />
+                        <Image
+                          source={{ uri: meal.imageUrl }}
+                          style={[styles.mealImage, meal.isCompleted && styles.mealImageCompleted]}
+                          resizeMode="cover"
+                        />
                         {meal.isCompleted && (
-                          <View style={styles.completedOverlay}>
-                            <Ionicons name="checkmark-circle" size={48} color={Colors.accent} />
-                          </View>
+                          <Animated.View
+                            entering={ZoomIn.duration(400)}
+                            exiting={FadeOut.duration(200)}
+                            style={styles.completedOverlay}
+                          >
+                            <View style={styles.completedBadge}>
+                              <Ionicons name="checkmark-circle" size={64} color={Colors.accent} />
+                              <Text style={styles.completedText}>COMPLETED</Text>
+                            </View>
+                          </Animated.View>
                         )}
                         <View style={styles.calorieOverlay}>
                           <Ionicons name="flame" size={14} color={Colors.background} />
@@ -345,16 +495,30 @@ export default function FoodScreen() {
                         </View>
 
                         {/* Check Off Button */}
-                        {!meal.isCompleted && (
+                        {meal.isCompleted ? (
+                          <TouchableOpacity
+                            style={styles.uncheckButton}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleUncheckMeal(day.dayNumber, mealType, meal);
+                            }}
+                          >
+                            <Ionicons name="close" size={16} color={Colors.accent} />
+                            <Text style={styles.uncheckButtonText}>Undo</Text>
+                          </TouchableOpacity>
+                        ) : (
                           <TouchableOpacity
                             style={styles.checkOffButton}
                             onPress={(e) => {
                               e.stopPropagation();
                               handleCheckOffMeal(day.dayNumber, mealType, meal);
                             }}
+                            disabled={completingMeals.has(`${day.dayNumber}_${mealType}`)}
                           >
                             <Ionicons name="checkmark" size={16} color={Colors.background} />
-                            <Text style={styles.checkOffButtonText}>Mark Complete</Text>
+                            <Text style={styles.checkOffButtonText}>
+                              {completingMeals.has(`${day.dayNumber}_${mealType}`) ? 'Saving...' : 'Mark Complete'}
+                            </Text>
                           </TouchableOpacity>
                         )}
                       </View>
@@ -448,15 +612,28 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  mealImageCompleted: {
+    opacity: 0.6,
+  },
   completedOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: `${Colors.background}AA`,
+    backgroundColor: `${Colors.background}CC`,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  completedBadge: {
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  completedText: {
+    fontSize: 16,
+    color: Colors.accent,
+    ...Fonts.heading,
+    letterSpacing: 2,
   },
   mealContent: {
     padding: Spacing.md,
@@ -511,6 +688,22 @@ const styles = StyleSheet.create({
   checkOffButtonText: {
     fontSize: 14,
     color: Colors.background,
+    ...Fonts.heading,
+  },
+  uncheckButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: Colors.accent,
+    borderRadius: BorderRadius.sm,
+    paddingVertical: Spacing.sm,
+  },
+  uncheckButtonText: {
+    fontSize: 14,
+    color: Colors.accent,
     ...Fonts.heading,
   },
   emptyState: {
