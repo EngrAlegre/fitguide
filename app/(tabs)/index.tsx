@@ -20,10 +20,13 @@ import LogActivityModal from '../../components/LogActivityModal';
 import { Activity, ActivityType } from '../../types/activity';
 import { EnergyBalance } from '../../types/nutrition';
 import {
-  getTodayActivitiesFromFirestore,
-  addActivityToFirestore,
   getEnergyBalanceFromFirestore,
 } from '../../utils/firebase-storage';
+import {
+  logActivity,
+  getTodayActivities,
+  getTodayCaloriesBurned,
+} from '../../services/activityService';
 
 export default function HomeScreen() {
   const { user } = useFirebaseAuth();
@@ -40,13 +43,20 @@ export default function HomeScreen() {
 
   const loadData = async () => {
     try {
-      const [todaySummary, balance] = await Promise.all([
-        getTodayActivitiesFromFirestore(),
+      const [activities, balance] = await Promise.all([
+        getTodayActivities(),
         getEnergyBalanceFromFirestore(),
       ]);
 
-      setTodayActivities(todaySummary.activities);
-      setEnergyBalance(balance);
+      setTodayActivities(activities);
+
+      // Update energy balance with calories burned from activities
+      const caloriesBurned = await getTodayCaloriesBurned();
+      setEnergyBalance({
+        ...balance,
+        caloriesOut: caloriesBurned,
+        balance: balance.caloriesIn - caloriesBurned,
+      });
     } catch (error) {
       console.error('Error loading data:', error);
     }
@@ -80,21 +90,32 @@ export default function HomeScreen() {
     calories: number
   ) => {
     try {
-      await addActivityToFirestore({
-        type,
-        duration,
-        intensity,
-        caloriesBurned: calories,
-        date: new Date().toISOString().split('T')[0],
-      });
+      // Use Verify & Lock pattern from activityService
+      const result = await logActivity(type, duration, intensity, calories);
 
-      await loadData();
+      if (result.success) {
+        // Reload data to show updated activity and energy balance
+        await loadData();
 
-      if (Platform.OS !== 'web') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        // Success haptic feedback
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+      } else {
+        // Error haptic feedback
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        }
+
+        // Show error to user
+        alert(result.error || 'Failed to save activity. Please try again.');
       }
     } catch (error) {
       console.error('Error saving activity:', error);
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+      alert('Failed to save activity. Please check your connection and try again.');
     }
   };
 
