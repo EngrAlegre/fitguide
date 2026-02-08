@@ -1,4 +1,4 @@
-// FitGuide Theme Constants - Pro Athlete Aesthetic
+// Movera Theme Constants - Pro Athlete Aesthetic
 export const Colors = {
   background: '#0A0A0A', // Matte Black
   accent: '#CCFF00', // Electric Lime

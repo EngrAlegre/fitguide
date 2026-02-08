@@ -792,7 +792,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* App Version */}
-        <Text style={styles.versionText}>Fitguide v1.0.0</Text>
+        <Text style={styles.versionText}>Movera v1.0.0</Text>
       </ScrollView>
 
       {/* Signing Out Overlay */}

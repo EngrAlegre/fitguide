@@ -160,7 +160,7 @@ export default function OnboardingScreen() {
       case 'welcome':
         return (
           <OnboardingCard
-            title="Welcome to FitGuide! 💪"
+            title="Welcome to Movera! 💪"
             description="Let's personalize your fitness and nutrition journey. We'll create a custom meal plan tailored just for you."
           >
             <View style={styles.welcomeContent}>

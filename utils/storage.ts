@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Activity, DailySummary, WeeklySummary } from '../types/activity';
 
-const ACTIVITIES_KEY = '@fitguide_activities';
-const DAILY_GOAL_KEY = '@fitguide_daily_goal';
+const ACTIVITIES_KEY = '@movera_activities';
+const DAILY_GOAL_KEY = '@movera_daily_goal';
 
 /**
  * Save activities to storage

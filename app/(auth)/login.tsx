@@ -79,7 +79,7 @@ export default function LoginScreen() {
           <View style={styles.logoContainer}>
             <Ionicons name="fitness" size={48} color={Colors.accent} />
           </View>
-          <Text style={styles.logo}>FITGUIDE</Text>
+          <Text style={styles.logo}>MOVERA</Text>
           <Text style={styles.tagline}>Your Budget-Friendly Fitness Journey</Text>
         </View>
 

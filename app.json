@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Fitguide",
-    "slug": "fitguide",
+    "name": "Movera",
+    "slug": "movera",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.fastshot.fitguide"
+      "bundleIdentifier": "com.fastshot.movera"
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +18,7 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.fastshot.fitguide",
+      "package": "com.fastshot.movera",
       "intentFilters": [
         {
           "action": "VIEW",
@@ -57,6 +57,13 @@
     "experiments": {
       "typedRoutes": true,
       "baseUrl": ""
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "fc8a3afb-097c-422e-bc47-920f53662037"
+      }
+    },
+    "owner": "engralegre03"
   }
 }

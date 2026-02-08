@@ -103,7 +103,7 @@ export default function SignUpScreen() {
           <View style={styles.logoContainer}>
             <Ionicons name="fitness" size={48} color={Colors.accent} />
           </View>
-          <Text style={styles.logo}>FITGUIDE</Text>
+          <Text style={styles.logo}>MOVERA</Text>
           <Text style={styles.tagline}>Start Your Fitness Journey Today</Text>
         </View>
 
@@ -111,7 +111,7 @@ export default function SignUpScreen() {
         <View style={styles.formSection}>
           <Text style={styles.title}>Create Account</Text>
           <Text style={styles.subtitle}>
-            Join Fitguide for home workouts and budget-friendly nutrition
+            Join Movera for home workouts and budget-friendly nutrition
           </Text>
 
           {/* Email Input */}

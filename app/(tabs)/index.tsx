@@ -143,7 +143,7 @@ export default function HomeScreen() {
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <View style={styles.headerText}>
-            <Text style={styles.logo}>FITGUIDE</Text>
+            <Text style={styles.logo}>MOVERA</Text>
             <Text style={styles.subtitle}>Home Workouts • Budget Nutrition</Text>
           </View>
           <TouchableOpacity style={styles.profileButton} onPress={handleProfilePress}>
@@ -217,7 +217,7 @@ export default function HomeScreen() {
           <View style={styles.guideCard}>
             <View style={styles.guideHeader}>
               <Ionicons name="information-circle" size={28} color={Colors.accent} />
-              <Text style={styles.guideTitle}>Welcome to Fitguide!</Text>
+              <Text style={styles.guideTitle}>Welcome to Movera!</Text>
             </View>
             <Text style={styles.guideText}>
               Start your fitness journey with bodyweight exercises you can do at home. No expensive
