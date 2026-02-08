@@ -6,6 +6,7 @@ export const Colors = {
   textPrimary: '#FFFFFF', // Crisp White
   textSecondary: '#A0A0A0',
   success: '#00FF88',
+  warning: '#FFB800',
   error: '#FF3B30',
   border: '#3A3A3A',
 };
