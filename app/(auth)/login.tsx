@@ -8,7 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Link } from 'expo-router';
@@ -21,11 +21,15 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
   const { signInWithEmail, isLoading, error } = useFirebaseAuth();
 
   const handleEmailLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please enter email and password');
+      setLocalError('Please enter email and password');
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
       return;
     }
 
@@ -33,7 +37,29 @@ export default function LoginScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
 
-    await signInWithEmail(email, password);
+    try {
+      setLocalError(null);
+      await signInWithEmail(email, password);
+      // Success haptic is handled in the auth provider
+    } catch (err) {
+      // Error is already handled by auth provider (state + haptics)
+      console.log('Sign in failed:', err);
+    }
+  };
+
+  // Clear errors when user starts typing
+  const handleEmailChange = (text: string) => {
+    setEmail(text);
+    if (localError || error) {
+      setLocalError(null);
+    }
+  };
+
+  const handlePasswordChange = (text: string) => {
+    setPassword(text);
+    if (localError || error) {
+      setLocalError(null);
+    }
   };
 
   return (
@@ -72,7 +98,7 @@ export default function LoginScreen() {
                 placeholder="Enter your email"
                 placeholderTextColor={Colors.textSecondary}
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={handleEmailChange}
                 autoCapitalize="none"
                 keyboardType="email-address"
                 autoComplete="email"
@@ -91,7 +117,7 @@ export default function LoginScreen() {
                 placeholder="Enter your password"
                 placeholderTextColor={Colors.textSecondary}
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={handlePasswordChange}
                 secureTextEntry={!showPassword}
                 autoComplete="password"
                 editable={!isLoading}
@@ -107,10 +133,10 @@ export default function LoginScreen() {
           </View>
 
           {/* Error Message */}
-          {error && (
+          {(error || localError) && (
             <View style={styles.errorContainer}>
               <Ionicons name="alert-circle" size={20} color={Colors.error} />
-              <Text style={styles.errorText}>{error.message}</Text>
+              <Text style={styles.errorText}>{localError || error?.message}</Text>
             </View>
           )}
 
@@ -120,9 +146,16 @@ export default function LoginScreen() {
             onPress={handleEmailLogin}
             disabled={isLoading}
           >
-            <Text style={styles.signInButtonText}>
-              {isLoading ? 'SIGNING IN...' : 'SIGN IN'}
-            </Text>
+            {isLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator color={Colors.background} size="small" />
+                <Text style={[styles.signInButtonText, { marginLeft: Spacing.sm }]}>
+                  SIGNING IN...
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.signInButtonText}>SIGN IN</Text>
+            )}
           </TouchableOpacity>
 
           {/* Links */}
@@ -254,6 +287,11 @@ const styles = StyleSheet.create({
     color: Colors.background,
     ...Fonts.heading,
     letterSpacing: 1,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   linksContainer: {
     alignItems: 'center',

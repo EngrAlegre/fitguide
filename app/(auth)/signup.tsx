@@ -8,7 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Link } from 'expo-router';
@@ -22,21 +22,31 @@ export default function SignUpScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const { signUpWithEmail, isLoading } = useFirebaseAuth();
+  const [localError, setLocalError] = useState<string | null>(null);
+  const { signUpWithEmail, isLoading, error } = useFirebaseAuth();
 
   const handleSignUp = async () => {
     if (!email.trim() || !password.trim() || !confirmPassword.trim()) {
-      Alert.alert('Error', 'Please fill in all fields');
+      setLocalError('Please fill in all fields');
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
+      setLocalError('Passwords do not match');
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
+      setLocalError('Password must be at least 6 characters');
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
       return;
     }
 
@@ -44,7 +54,36 @@ export default function SignUpScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
 
-    await signUpWithEmail(email, password);
+    try {
+      setLocalError(null);
+      await signUpWithEmail(email, password);
+      // Success haptic is handled in the auth provider
+    } catch (err) {
+      // Error is already handled by auth provider (state + haptics)
+      console.log('Sign up failed:', err);
+    }
+  };
+
+  // Clear errors when user starts typing
+  const handleEmailChange = (text: string) => {
+    setEmail(text);
+    if (localError || error) {
+      setLocalError(null);
+    }
+  };
+
+  const handlePasswordChange = (text: string) => {
+    setPassword(text);
+    if (localError || error) {
+      setLocalError(null);
+    }
+  };
+
+  const handleConfirmPasswordChange = (text: string) => {
+    setConfirmPassword(text);
+    if (localError || error) {
+      setLocalError(null);
+    }
   };
 
   return (
@@ -85,7 +124,7 @@ export default function SignUpScreen() {
                 placeholder="Enter your email"
                 placeholderTextColor={Colors.textSecondary}
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={handleEmailChange}
                 autoCapitalize="none"
                 keyboardType="email-address"
                 autoComplete="email"
@@ -104,7 +143,7 @@ export default function SignUpScreen() {
                 placeholder="Create a password (min 6 characters)"
                 placeholderTextColor={Colors.textSecondary}
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={handlePasswordChange}
                 secureTextEntry={!showPassword}
                 autoComplete="password-new"
                 editable={!isLoading}
@@ -129,12 +168,20 @@ export default function SignUpScreen() {
                 placeholder="Confirm your password"
                 placeholderTextColor={Colors.textSecondary}
                 value={confirmPassword}
-                onChangeText={setConfirmPassword}
+                onChangeText={handleConfirmPasswordChange}
                 secureTextEntry={!showPassword}
                 editable={!isLoading}
               />
             </View>
           </View>
+
+          {/* Error Message */}
+          {(error || localError) && (
+            <View style={styles.errorContainer}>
+              <Ionicons name="alert-circle" size={20} color={Colors.error} />
+              <Text style={styles.errorText}>{localError || error?.message}</Text>
+            </View>
+          )}
 
           {/* Sign Up Button */}
           <TouchableOpacity
@@ -142,9 +189,16 @@ export default function SignUpScreen() {
             onPress={handleSignUp}
             disabled={isLoading}
           >
-            <Text style={styles.signUpButtonText}>
-              {isLoading ? 'CREATING ACCOUNT...' : 'CREATE ACCOUNT'}
-            </Text>
+            {isLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator color={Colors.background} size="small" />
+                <Text style={[styles.signUpButtonText, { marginLeft: Spacing.sm }]}>
+                  CREATING ACCOUNT...
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.signUpButtonText}>CREATE ACCOUNT</Text>
+            )}
           </TouchableOpacity>
 
           {/* Links */}
@@ -239,6 +293,21 @@ const styles = StyleSheet.create({
     ...Fonts.body,
     paddingVertical: Spacing.sm,
   },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: `${Colors.error}20`,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  errorText: {
+    flex: 1,
+    fontSize: 14,
+    color: Colors.error,
+    ...Fonts.body,
+  },
   signUpButton: {
     backgroundColor: Colors.accent,
     borderRadius: BorderRadius.full,
@@ -254,6 +323,11 @@ const styles = StyleSheet.create({
     color: Colors.background,
     ...Fonts.heading,
     letterSpacing: 1,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   linksContainer: {
     alignItems: 'center',

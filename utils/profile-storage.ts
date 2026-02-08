@@ -140,7 +140,12 @@ export async function getUserProfile(): Promise<UserProfile | null> {
       daily_calorie_goal: profile.daily_calorie_goal,
     });
     return profile;
-  } catch (error) {
+  } catch (error: any) {
+    // Check if this is a Firestore permissions error
+    if (error.code === 'permission-denied') {
+      console.warn('getUserProfile: Firestore permission denied. User needs to complete onboarding.');
+      return null;
+    }
     console.error('getUserProfile: Unexpected error:', error);
     throw error;
   }
@@ -150,6 +155,12 @@ export async function getUserProfile(): Promise<UserProfile | null> {
  * Check if user has completed onboarding
  */
 export async function hasCompletedOnboarding(): Promise<boolean> {
-  const profile = await getUserProfile();
-  return profile?.onboarding_completed === true;
+  try {
+    const profile = await getUserProfile();
+    return profile?.onboarding_completed === true;
+  } catch (error: any) {
+    console.warn('hasCompletedOnboarding: Error checking onboarding status:', error);
+    // If we can't check, assume onboarding not completed to be safe
+    return false;
+  }
 }

@@ -10,6 +10,8 @@ import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { useRouter, useSegments } from 'expo-router';
 import { hasCompletedOnboarding } from '../utils/profile-storage';
+import * as Haptics from 'expo-haptics';
+import { Platform } from 'react-native';
 
 interface AuthError {
   message: string;
@@ -62,23 +64,40 @@ export function FirebaseAuthProvider({ children, routes }: FirebaseAuthProviderP
     const inOnboardingGroup = segments[0] === 'onboarding';
 
     async function checkAndNavigate() {
-      if (!user && !inAuthGroup) {
-        // User is not authenticated and not in auth screens
-        router.replace(routes.login as any);
-      } else if (user && inAuthGroup) {
-        // User is authenticated but still in auth screens, check onboarding
-        const completed = await hasCompletedOnboarding();
-        if (!completed) {
-          router.replace('/onboarding' as any);
-        } else {
-          router.replace(routes.afterLogin as any);
+      try {
+        if (!user && !inAuthGroup) {
+          // User is not authenticated and not in auth screens
+          router.replace(routes.login as any);
+        } else if (user && inAuthGroup) {
+          // User is authenticated but still in auth screens, check onboarding
+          try {
+            const completed = await hasCompletedOnboarding();
+            if (!completed) {
+              router.replace('/onboarding' as any);
+            } else {
+              router.replace(routes.afterLogin as any);
+            }
+          } catch (firestoreError: any) {
+            // If Firestore fails, assume onboarding not completed and proceed to onboarding
+            console.warn('Firestore permission error, redirecting to onboarding:', firestoreError);
+            router.replace('/onboarding' as any);
+          }
+        } else if (user && !inOnboardingGroup) {
+          // User is authenticated and not in onboarding, check if they need to complete it
+          try {
+            const completed = await hasCompletedOnboarding();
+            if (!completed) {
+              router.replace('/onboarding' as any);
+            }
+          } catch (firestoreError: any) {
+            // If Firestore fails, redirect to onboarding to be safe
+            console.warn('Firestore permission error, redirecting to onboarding:', firestoreError);
+            router.replace('/onboarding' as any);
+          }
         }
-      } else if (user && !inOnboardingGroup) {
-        // User is authenticated and not in onboarding, check if they need to complete it
-        const completed = await hasCompletedOnboarding();
-        if (!completed) {
-          router.replace('/onboarding' as any);
-        }
+      } catch (error: any) {
+        console.error('Navigation error:', error);
+        setError({ message: 'Navigation failed. Please try again.', code: error?.code });
       }
     }
 
@@ -92,9 +111,20 @@ export function FirebaseAuthProvider({ children, routes }: FirebaseAuthProviderP
 
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       setUser(userCredential.user);
+
+      // Trigger success haptic feedback
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
     } catch (err: any) {
       const errorMessage = getFirebaseErrorMessage(err.code);
       setError({ message: errorMessage, code: err.code });
+
+      // Trigger error haptic feedback
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+
       throw err;
     } finally {
       setIsLoading(false);
@@ -109,19 +139,35 @@ export function FirebaseAuthProvider({ children, routes }: FirebaseAuthProviderP
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const newUser = userCredential.user;
 
-      // Create user profile in Firestore
-      await setDoc(doc(db, 'user_profiles', newUser.uid), {
-        email: newUser.email,
-        daily_calorie_goal: 2500,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        onboarding_completed: false,
-      });
+      // Create user profile in Firestore (with error handling)
+      try {
+        await setDoc(doc(db, 'user_profiles', newUser.uid), {
+          email: newUser.email,
+          daily_calorie_goal: 2500,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          onboarding_completed: false,
+        });
+      } catch (firestoreError) {
+        console.warn('Failed to create user profile in Firestore:', firestoreError);
+        // Don't fail signup if Firestore fails - user can complete profile during onboarding
+      }
 
       setUser(newUser);
+
+      // Trigger success haptic feedback
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
     } catch (err: any) {
       const errorMessage = getFirebaseErrorMessage(err.code);
       setError({ message: errorMessage, code: err.code });
+
+      // Trigger error haptic feedback
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+
       throw err;
     } finally {
       setIsLoading(false);
