@@ -56,7 +56,7 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "baseUrl": "/e17d0d7d-dfff-49b1-86ca-0a4853e1de6d/dev-preview/"
+      "baseUrl": ""
     },
     "extra": {
       "router": {},

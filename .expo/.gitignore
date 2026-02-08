@@ -1,0 +1,7 @@
+# Ignore everything in .expo except types/.gitkeep
+*
+!types/
+types/*
+!types/.gitkeep
+!types/README.md
+!.gitignore

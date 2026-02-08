@@ -2,7 +2,10 @@
 node_modules/
 
 # Expo
-.expo/
+.expo/*
+!.expo/types/
+.expo/types/*
+!.expo/types/.gitkeep
 dist/
 !lib/*/dist/
 web-build/
@@ -40,7 +43,6 @@ yarn-error.*
 app-example
 
 .vscode
-.expo/
 
 # Fastshot-specific excludes
 .fastshot-logs/
