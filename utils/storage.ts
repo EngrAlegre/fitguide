@@ -117,3 +117,16 @@ export async function loadDailyGoal(): Promise<number> {
     return 2500;
   }
 }
+
+/**
+ * Clear all storage (for sign out)
+ */
+export async function clearAllStorage(): Promise<void> {
+  try {
+    await AsyncStorage.multiRemove([ACTIVITIES_KEY, DAILY_GOAL_KEY]);
+    console.log('Storage cleared successfully');
+  } catch (error) {
+    console.error('Error clearing storage:', error);
+    throw error;
+  }
+}

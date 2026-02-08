@@ -9,6 +9,7 @@ import {
 import { auth } from './firebase';
 import { useRouter, useSegments } from 'expo-router';
 import { hasCompletedOnboarding, clearProfileCache, getUserProfile } from '../utils/profile-storage';
+import { clearAllStorage } from '../utils/storage';
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
 
@@ -166,15 +167,31 @@ export function FirebaseAuthProvider({ children, routes }: FirebaseAuthProviderP
       setIsLoading(true);
       setError(null);
 
-      // Clear profile cache before signing out
+      // Clear all local data and caches
       clearProfileCache();
+      await clearAllStorage();
 
+      // Sign out from Firebase
       await signOut(auth);
+
+      // Success haptic feedback
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
       setUser(null);
+
+      // Navigate to login screen
       router.replace(routes.login as any);
     } catch (err: any) {
       const errorMessage = getFirebaseErrorMessage(err.code);
       setError({ message: errorMessage, code: err.code });
+
+      // Error haptic feedback
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+
       throw err;
     } finally {
       setIsLoading(false);

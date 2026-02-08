@@ -9,6 +9,7 @@ import {
   Alert,
   Platform,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -45,6 +46,7 @@ export default function ProfileScreen() {
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [signingOut, setSigningOut] = useState(false);
   const [editMode, setEditMode] = useState<EditMode>(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [savingField, setSavingField] = useState<SavingField>(null);
@@ -350,16 +352,32 @@ export default function ProfileScreen() {
       'Sign Out',
       'Are you sure you want to sign out?',
       [
-        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+          onPress: () => {
+            if (Platform.OS !== 'web') {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }
+          }
+        },
         {
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
+            // Haptic feedback on confirmation
+            if (Platform.OS !== 'web') {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            }
+
             try {
+              setSigningOut(true);
               await signOut();
+              // Navigation will be handled by FirebaseAuthProvider
             } catch (error) {
               console.error('Error signing out:', error);
-              Alert.alert('Error', 'Failed to sign out');
+              setSigningOut(false);
+              Alert.alert('Error', 'Failed to sign out. Please try again.');
             }
           },
         },
@@ -777,6 +795,17 @@ export default function ProfileScreen() {
         <Text style={styles.versionText}>Fitguide v1.0.0</Text>
       </ScrollView>
 
+      {/* Signing Out Overlay */}
+      {signingOut && (
+        <View style={styles.signOutOverlay}>
+          <View style={styles.signOutContent}>
+            <ActivityIndicator size="large" color={Colors.accent} style={styles.signOutSpinner} />
+            <Text style={styles.signOutText}>Signing Out...</Text>
+            <Text style={styles.signOutSubtext}>Clearing your session securely</Text>
+          </View>
+        </View>
+      )}
+
       {/* Change Password Modal */}
       <Modal
         visible={showPasswordModal}
@@ -1180,5 +1209,35 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.5,
+  },
+  signOutOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(10, 10, 10, 0.98)', // Nearly opaque matte black
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 9999,
+  },
+  signOutContent: {
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  signOutSpinner: {
+    marginBottom: Spacing.lg,
+    transform: [{ scale: 1.5 }],
+  },
+  signOutText: {
+    fontSize: 24,
+    color: Colors.accent,
+    ...Fonts.heading,
+    marginBottom: Spacing.xs,
+  },
+  signOutSubtext: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    ...Fonts.body,
   },
 });
