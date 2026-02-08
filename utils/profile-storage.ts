@@ -1,6 +1,11 @@
-import { auth, db } from '../lib/firebase';
-import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
+import { auth } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { OnboardingData, UserProfile } from '../types/profile';
+
+// In-memory cache for profile data to prevent flickering
+let profileCache: UserProfile | null = null;
+let cacheTimestamp: number = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 /**
  * Calculate daily calorie goal based on user profile data
@@ -67,6 +72,8 @@ export async function saveUserProfile(data: OnboardingData): Promise<void> {
   const calorieGoal = calculateCalorieGoal(data);
 
   const profileData = {
+    uid: user.uid,
+    email: user.email || '',
     age: data.age,
     gender: data.gender,
     height: data.height,
@@ -76,15 +83,50 @@ export async function saveUserProfile(data: OnboardingData): Promise<void> {
     fitness_goal: data.fitnessGoal,
     daily_calorie_goal: calorieGoal,
     onboarding_completed: true,
-    updated_at: Timestamp.now(),
-    created_at: Timestamp.now(),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   };
 
   console.log('saveUserProfile: Saving profile for user:', user.uid);
 
   try {
-    const docRef = doc(db, 'user_profiles', user.uid);
-    await setDoc(docRef, profileData, { merge: true });
+    // Set Supabase auth session from Firebase token
+    const firebaseToken = await user.getIdToken();
+    await supabase.auth.setSession({
+      access_token: firebaseToken,
+      refresh_token: firebaseToken,
+    });
+
+    // Upsert profile (insert or update)
+    const { error } = await supabase
+      .from('user_profiles')
+      .upsert(profileData, {
+        onConflict: 'uid',
+      });
+
+    if (error) {
+      console.error('saveUserProfile: Error saving profile:', error);
+      throw new Error(`Failed to save profile: ${error.message}`);
+    }
+
+    // Update cache
+    profileCache = {
+      uid: user.uid,
+      email: user.email || '',
+      age: data.age,
+      gender: data.gender,
+      height: data.height,
+      weight: data.weight,
+      activityLevel: data.activityLevel,
+      financialStatus: data.financialStatus,
+      fitnessGoal: data.fitnessGoal,
+      daily_calorie_goal: calorieGoal,
+      onboarding_completed: true,
+      created_at: profileData.created_at,
+      updated_at: profileData.updated_at,
+    };
+    cacheTimestamp = Date.now();
+
     console.log('saveUserProfile: Profile saved successfully');
   } catch (error: any) {
     console.error('saveUserProfile: Error saving profile:', error);
@@ -93,7 +135,7 @@ export async function saveUserProfile(data: OnboardingData): Promise<void> {
 }
 
 /**
- * Get user profile from Firestore
+ * Get user profile from Supabase with caching
  */
 export async function getUserProfile(): Promise<UserProfile | null> {
   const user = auth.currentUser;
@@ -102,34 +144,58 @@ export async function getUserProfile(): Promise<UserProfile | null> {
     return null;
   }
 
+  // Return cached profile if still valid
+  const now = Date.now();
+  if (profileCache && profileCache.uid === user.uid && now - cacheTimestamp < CACHE_TTL) {
+    console.log('getUserProfile: Returning cached profile');
+    return profileCache;
+  }
+
   console.log('getUserProfile: Fetching profile for user:', user.uid);
   try {
-    const docRef = doc(db, 'user_profiles', user.uid);
-    const docSnap = await getDoc(docRef);
+    // Set Supabase auth session from Firebase token
+    const firebaseToken = await user.getIdToken();
+    await supabase.auth.setSession({
+      access_token: firebaseToken,
+      refresh_token: firebaseToken,
+    });
 
-    if (!docSnap.exists()) {
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('uid', user.uid)
+      .maybeSingle();
+
+    if (error) {
+      console.error('getUserProfile: Error fetching profile:', error);
+      return null;
+    }
+
+    if (!data) {
       console.log('getUserProfile: Profile does not exist');
       return null;
     }
 
-    const data = docSnap.data();
-
-    // Map Firestore data to UserProfile
+    // Map Supabase data to UserProfile
     const profile: UserProfile = {
-      uid: user.uid,
-      email: user.email || '',
-      age: data.age,
-      gender: data.gender,
-      height: data.height,
-      weight: data.weight,
-      activityLevel: data.activity_level,
-      financialStatus: data.financial_status,
-      fitnessGoal: data.fitness_goal,
-      daily_calorie_goal: data.daily_calorie_goal,
-      onboarding_completed: data.onboarding_completed,
-      created_at: data.created_at?.toDate().toISOString(),
-      updated_at: data.updated_at?.toDate().toISOString(),
+      uid: data.uid,
+      email: data.email || '',
+      age: data.age || undefined,
+      gender: (data.gender as any) || undefined,
+      height: data.height || undefined,
+      weight: data.weight || undefined,
+      activityLevel: (data.activity_level as any) || undefined,
+      financialStatus: (data.financial_status as any) || undefined,
+      fitnessGoal: (data.fitness_goal as any) || undefined,
+      daily_calorie_goal: data.daily_calorie_goal || 2500,
+      onboarding_completed: data.onboarding_completed || false,
+      created_at: data.created_at || new Date().toISOString(),
+      updated_at: data.updated_at || new Date().toISOString(),
     };
+
+    // Update cache
+    profileCache = profile;
+    cacheTimestamp = Date.now();
 
     console.log('getUserProfile: Profile retrieved successfully:', {
       age: profile.age,
@@ -138,29 +204,37 @@ export async function getUserProfile(): Promise<UserProfile | null> {
       activityLevel: profile.activityLevel,
       financialStatus: profile.financialStatus,
       daily_calorie_goal: profile.daily_calorie_goal,
+      onboarding_completed: profile.onboarding_completed,
     });
     return profile;
   } catch (error: any) {
-    // Check if this is a Firestore permissions error
-    if (error.code === 'permission-denied') {
-      console.warn('getUserProfile: Firestore permission denied. User needs to complete onboarding.');
-      return null;
-    }
     console.error('getUserProfile: Unexpected error:', error);
-    throw error;
+    return null;
   }
 }
 
 /**
  * Check if user has completed onboarding
+ * Uses cached data when available to prevent flicker
  */
 export async function hasCompletedOnboarding(): Promise<boolean> {
   try {
     const profile = await getUserProfile();
-    return profile?.onboarding_completed === true;
+    const completed = profile?.onboarding_completed === true;
+    console.log('hasCompletedOnboarding:', completed);
+    return completed;
   } catch (error: any) {
     console.warn('hasCompletedOnboarding: Error checking onboarding status:', error);
     // If we can't check, assume onboarding not completed to be safe
     return false;
   }
+}
+
+/**
+ * Clear the profile cache (useful for logout)
+ */
+export function clearProfileCache(): void {
+  profileCache = null;
+  cacheTimestamp = 0;
+  console.log('clearProfileCache: Cache cleared');
 }

@@ -6,10 +6,9 @@ import {
   onAuthStateChanged,
   User as FirebaseUser,
 } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { auth, db } from './firebase';
+import { auth } from './firebase';
 import { useRouter, useSegments } from 'expo-router';
-import { hasCompletedOnboarding } from '../utils/profile-storage';
+import { hasCompletedOnboarding, clearProfileCache, getUserProfile } from '../utils/profile-storage';
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
 
@@ -56,42 +55,41 @@ export function FirebaseAuthProvider({ children, routes }: FirebaseAuthProviderP
     return () => unsubscribe();
   }, []);
 
-  // Handle navigation based on auth state
+  // Handle navigation based on auth state with optimized onboarding check
   useEffect(() => {
     if (isInitializing) return;
 
     const inAuthGroup = segments[0] === '(auth)';
     const inOnboardingGroup = segments[0] === 'onboarding';
+    const inTabsGroup = segments[0] === '(tabs)';
 
     async function checkAndNavigate() {
       try {
         if (!user && !inAuthGroup) {
           // User is not authenticated and not in auth screens
+          console.log('Navigation: User not authenticated, redirecting to login');
           router.replace(routes.login as any);
         } else if (user && inAuthGroup) {
-          // User is authenticated but still in auth screens, check onboarding
-          try {
-            const completed = await hasCompletedOnboarding();
-            if (!completed) {
-              router.replace('/onboarding' as any);
-            } else {
-              router.replace(routes.afterLogin as any);
-            }
-          } catch (firestoreError: any) {
-            // If Firestore fails, assume onboarding not completed and proceed to onboarding
-            console.warn('Firestore permission error, redirecting to onboarding:', firestoreError);
+          // User just logged in, check profile completion status
+          console.log('Navigation: User authenticated from auth screen, checking profile');
+
+          // Prefetch profile to populate cache
+          const profile = await getUserProfile();
+          const completed = profile?.onboarding_completed === true;
+
+          if (!completed) {
+            console.log('Navigation: Profile incomplete, redirecting to onboarding');
             router.replace('/onboarding' as any);
+          } else {
+            console.log('Navigation: Profile complete, redirecting to dashboard');
+            router.replace(routes.afterLogin as any);
           }
-        } else if (user && !inOnboardingGroup) {
-          // User is authenticated and not in onboarding, check if they need to complete it
-          try {
-            const completed = await hasCompletedOnboarding();
-            if (!completed) {
-              router.replace('/onboarding' as any);
-            }
-          } catch (firestoreError: any) {
-            // If Firestore fails, redirect to onboarding to be safe
-            console.warn('Firestore permission error, redirecting to onboarding:', firestoreError);
+        } else if (user && !inOnboardingGroup && !inTabsGroup) {
+          // User is authenticated but not in expected screens
+          console.log('Navigation: Checking if onboarding needed');
+          const completed = await hasCompletedOnboarding();
+          if (!completed) {
+            console.log('Navigation: Redirecting to onboarding');
             router.replace('/onboarding' as any);
           }
         }
@@ -139,19 +137,8 @@ export function FirebaseAuthProvider({ children, routes }: FirebaseAuthProviderP
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const newUser = userCredential.user;
 
-      // Create user profile in Firestore (with error handling)
-      try {
-        await setDoc(doc(db, 'user_profiles', newUser.uid), {
-          email: newUser.email,
-          daily_calorie_goal: 2500,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          onboarding_completed: false,
-        });
-      } catch (firestoreError) {
-        console.warn('Failed to create user profile in Firestore:', firestoreError);
-        // Don't fail signup if Firestore fails - user can complete profile during onboarding
-      }
+      // Note: Profile will be created during onboarding flow
+      console.log('User created:', newUser.uid);
 
       setUser(newUser);
 
@@ -178,6 +165,10 @@ export function FirebaseAuthProvider({ children, routes }: FirebaseAuthProviderP
     try {
       setIsLoading(true);
       setError(null);
+
+      // Clear profile cache before signing out
+      clearProfileCache();
+
       await signOut(auth);
       setUser(null);
       router.replace(routes.login as any);
