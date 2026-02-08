@@ -33,6 +33,7 @@ import {
 import MealCard from '../../components/coach/MealCard';
 import ActivityCard from '../../components/coach/ActivityCard';
 import ShareToCoachSheet from '../../components/coach/ShareToCoachSheet';
+import { ChatHistorySkeletonLoader } from '../../components/coach/SkeletonLoader';
 
 interface Message {
   id: string;
@@ -594,10 +595,27 @@ Keep it motivating and practical:`;
     return (
       <View style={styles.container}>
         <StatusBar style="light" />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.accent} />
-          <Text style={styles.loadingText}>Loading your conversation...</Text>
+
+        {/* Premium Header */}
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
+            <View style={styles.coachBadge}>
+              <Ionicons name="sparkles" size={20} color={Colors.background} />
+            </View>
+            <View style={styles.headerText}>
+              <Text style={styles.title}>AI COACH</Text>
+              <View style={styles.statusRow}>
+                <View style={styles.statusDot} />
+                <Text style={styles.subtitle}>Data-aware • Visual intelligence</Text>
+              </View>
+            </View>
+          </View>
         </View>
+
+        {/* Skeleton Loader with Electric Lime Pulse */}
+        <ScrollView style={styles.messagesContainer}>
+          <ChatHistorySkeletonLoader />
+        </ScrollView>
       </View>
     );
   }

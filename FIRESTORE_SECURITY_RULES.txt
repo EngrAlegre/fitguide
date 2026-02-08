@@ -1,0 +1,96 @@
+================================================================
+FIRESTORE SECURITY RULES FOR FITGUIDE APP
+================================================================
+
+Copy and paste these rules directly into your Firebase Console:
+(Firebase Console → Firestore Database → Rules)
+
+----------------------------------------------------------------
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if user owns the resource
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // User Profiles Collection
+    // Users can only read and write their own profile
+    match /user_profiles/{userId} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId);
+    }
+
+    // Coach Messages Collection
+    // Users can only access their own coach conversation history
+    match /coach_messages/{messageId} {
+      allow read: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.user_id == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+    }
+
+    // Meals Collection (if you add meal logging)
+    match /meals/{mealId} {
+      allow read: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.user_id == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+    }
+
+    // Activities/Workouts Collection (if you add workout logging)
+    match /activities/{activityId} {
+      allow read: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.user_id == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+    }
+
+    // Weekly Plans Collection (if you add meal plans)
+    match /weekly_plans/{planId} {
+      allow read: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.user_id == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+    }
+
+    // Deny all other reads and writes by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+----------------------------------------------------------------
+
+INSTRUCTIONS:
+
+1. Go to Firebase Console (https://console.firebase.google.com/)
+2. Select your project: fitguide-b0a78
+3. Navigate to: Firestore Database → Rules (in the left sidebar)
+4. Delete all existing rules
+5. Copy the entire rules block above (starting from "rules_version")
+6. Paste into the Firebase Rules editor
+7. Click "Publish" button
+
+IMPORTANT NOTES:
+
+- These rules ensure that users can ONLY access their own data
+- All operations require authentication (request.auth != null)
+- Each document must have a "user_id" field matching the authenticated user's UID
+- The app already stores user_id correctly in all operations
+- Rules are applied immediately after publishing
+
+SECURITY FEATURES:
+
+✓ Users cannot read other users' profiles
+✓ Users cannot read other users' chat history
+✓ Users cannot modify other users' data
+✓ Unauthenticated users have no access
+✓ All writes validate user_id ownership
+
+================================================================

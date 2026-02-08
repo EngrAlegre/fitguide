@@ -1,5 +1,5 @@
-import { auth } from '../lib/firebase';
-import { supabase } from '../lib/supabase';
+import { auth, db } from '../lib/firebase';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { OnboardingData, UserProfile } from '../types/profile';
 
 // In-memory cache for profile data to prevent flickering
@@ -60,7 +60,7 @@ function calculateCalorieGoal(data: OnboardingData): number {
 }
 
 /**
- * Save user profile data after onboarding
+ * Save user profile data after onboarding to Firestore
  */
 export async function saveUserProfile(data: OnboardingData): Promise<void> {
   const user = auth.currentUser;
@@ -78,38 +78,22 @@ export async function saveUserProfile(data: OnboardingData): Promise<void> {
     gender: data.gender,
     height: data.height,
     weight: data.weight,
-    activity_level: data.activityLevel,
-    financial_status: data.financialStatus,
-    fitness_goal: data.fitnessGoal,
+    activityLevel: data.activityLevel,
+    financialStatus: data.financialStatus,
+    fitnessGoal: data.fitnessGoal,
     daily_calorie_goal: calorieGoal,
     onboarding_completed: true,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    created_at: serverTimestamp(),
+    updated_at: serverTimestamp(),
   };
 
   console.log('saveUserProfile: Saving profile for user:', user.uid);
 
   try {
-    // Set Supabase auth session from Firebase token
-    const firebaseToken = await user.getIdToken();
-    await supabase.auth.setSession({
-      access_token: firebaseToken,
-      refresh_token: firebaseToken,
-    });
+    // Save to Firestore
+    await setDoc(doc(db, 'user_profiles', user.uid), profileData);
 
-    // Upsert profile (insert or update)
-    const { error } = await supabase
-      .from('user_profiles')
-      .upsert(profileData, {
-        onConflict: 'uid',
-      });
-
-    if (error) {
-      console.error('saveUserProfile: Error saving profile:', error);
-      throw new Error(`Failed to save profile: ${error.message}`);
-    }
-
-    // Update cache
+    // Update cache with current timestamp
     profileCache = {
       uid: user.uid,
       email: user.email || '',
@@ -122,8 +106,8 @@ export async function saveUserProfile(data: OnboardingData): Promise<void> {
       fitnessGoal: data.fitnessGoal,
       daily_calorie_goal: calorieGoal,
       onboarding_completed: true,
-      created_at: profileData.created_at,
-      updated_at: profileData.updated_at,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     };
     cacheTimestamp = Date.now();
 
@@ -135,7 +119,7 @@ export async function saveUserProfile(data: OnboardingData): Promise<void> {
 }
 
 /**
- * Get user profile from Supabase with caching
+ * Get user profile from Firestore with caching
  */
 export async function getUserProfile(): Promise<UserProfile | null> {
   const user = auth.currentUser;
@@ -153,44 +137,31 @@ export async function getUserProfile(): Promise<UserProfile | null> {
 
   console.log('getUserProfile: Fetching profile for user:', user.uid);
   try {
-    // Set Supabase auth session from Firebase token
-    const firebaseToken = await user.getIdToken();
-    await supabase.auth.setSession({
-      access_token: firebaseToken,
-      refresh_token: firebaseToken,
-    });
+    const docRef = doc(db, 'user_profiles', user.uid);
+    const docSnap = await getDoc(docRef);
 
-    const { data, error } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .eq('uid', user.uid)
-      .maybeSingle();
-
-    if (error) {
-      console.error('getUserProfile: Error fetching profile:', error);
-      return null;
-    }
-
-    if (!data) {
+    if (!docSnap.exists()) {
       console.log('getUserProfile: Profile does not exist');
       return null;
     }
 
-    // Map Supabase data to UserProfile
+    const data = docSnap.data();
+
+    // Map Firestore data to UserProfile
     const profile: UserProfile = {
       uid: data.uid,
       email: data.email || '',
       age: data.age || undefined,
-      gender: (data.gender as any) || undefined,
+      gender: data.gender || undefined,
       height: data.height || undefined,
       weight: data.weight || undefined,
-      activityLevel: (data.activity_level as any) || undefined,
-      financialStatus: (data.financial_status as any) || undefined,
-      fitnessGoal: (data.fitness_goal as any) || undefined,
+      activityLevel: data.activityLevel || undefined,
+      financialStatus: data.financialStatus || undefined,
+      fitnessGoal: data.fitnessGoal || undefined,
       daily_calorie_goal: data.daily_calorie_goal || 2500,
       onboarding_completed: data.onboarding_completed || false,
-      created_at: data.created_at || new Date().toISOString(),
-      updated_at: data.updated_at || new Date().toISOString(),
+      created_at: data.created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
+      updated_at: data.updated_at?.toDate?.()?.toISOString() || new Date().toISOString(),
     };
 
     // Update cache

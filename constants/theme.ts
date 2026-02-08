@@ -1,14 +1,14 @@
-// Fitguide Theme Constants
+// FitGuide Theme Constants - Pro Athlete Aesthetic
 export const Colors = {
-  background: '#1B3022', // Deep Forest Green
+  background: '#0A0A0A', // Matte Black
   accent: '#CCFF00', // Electric Lime
-  cardBg: '#2D2D2D', // Slate Gray
+  cardBg: '#1B3022', // Deep Forest Green for depth
   textPrimary: '#FFFFFF', // Crisp White
   textSecondary: '#A0A0A0',
-  success: '#00FF88',
+  success: '#CCFF00',
   warning: '#FFB800',
   error: '#FF3B30',
-  border: '#3A3A3A',
+  border: '#1B3022', // Deep Forest Green for subtle borders
 };
 
 export const Fonts = {

@@ -115,10 +115,20 @@ export default function OnboardingScreen() {
       // Save profile to Firestore
       await saveUserProfile(formData as OnboardingData);
 
+      // Success haptic feedback
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
       // Navigate to tabs
       router.replace('/(tabs)');
     } catch (error) {
       console.error('Error completing onboarding:', error);
+
+      // Error haptic feedback
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -155,15 +165,21 @@ export default function OnboardingScreen() {
           >
             <View style={styles.welcomeContent}>
               <View style={styles.featureItem}>
-                <Ionicons name="restaurant" size={32} color={Colors.accent} />
+                <View style={styles.featureIcon}>
+                  <Ionicons name="restaurant" size={24} color={Colors.accent} />
+                </View>
                 <Text style={styles.featureText}>Personalized 3-day meal plans</Text>
               </View>
               <View style={styles.featureItem}>
-                <Ionicons name="fitness" size={32} color={Colors.accent} />
+                <View style={styles.featureIcon}>
+                  <Ionicons name="fitness" size={24} color={Colors.accent} />
+                </View>
                 <Text style={styles.featureText}>AI-powered nutrition guidance</Text>
               </View>
               <View style={styles.featureItem}>
-                <Ionicons name="trending-up" size={32} color={Colors.accent} />
+                <View style={styles.featureIcon}>
+                  <Ionicons name="trending-up" size={24} color={Colors.accent} />
+                </View>
                 <Text style={styles.featureText}>Track your progress effortlessly</Text>
               </View>
             </View>
@@ -421,21 +437,32 @@ const styles = StyleSheet.create({
     ...Fonts.heading,
   },
   welcomeContent: {
-    gap: Spacing.xl,
+    gap: Spacing.lg,
   },
   featureItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.lg,
+    gap: Spacing.md,
     backgroundColor: Colors.cardBg,
     borderRadius: BorderRadius.md,
     padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  featureIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: `${Colors.accent}20`,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   featureText: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 15,
     color: Colors.textPrimary,
     ...Fonts.body,
+    lineHeight: 22,
   },
   inputLabel: {
     fontSize: 16,
