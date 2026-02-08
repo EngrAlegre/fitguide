@@ -84,6 +84,7 @@ export default function CoachScreen() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const { generateText, isLoading } = useTextGeneration({
     onSuccess: async (response) => {
@@ -136,10 +137,13 @@ export default function CoachScreen() {
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
+    // Longer delay for history load to ensure smooth rendering
+    const delay = isLoadingHistory ? 0 : messages.length > 5 ? 500 : 200;
+
     setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-  }, [messages]);
+      scrollViewRef.current?.scrollToEnd({ animated: !isLoadingHistory });
+    }, delay);
+  }, [messages, isLoadingHistory]);
 
   const loadProfile = async () => {
     try {
@@ -197,17 +201,42 @@ export default function CoachScreen() {
           };
         });
         setMessages(loadedMessages);
+
+        // Haptic feedback on successful history load
+        if (Platform.OS !== 'web' && loadedMessages.length > 0) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
       } else {
         // First time user - show welcome message
         const welcomeMsg = getWelcomeMessage();
         setMessages([welcomeMsg]);
         await saveMessageToDatabase(welcomeMsg);
+
+        // Light haptic for welcome
+        if (Platform.OS !== 'web') {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        }
       }
     } catch (error) {
       console.error('Error in loadChatHistory:', error);
       setMessages([getWelcomeMessage()]);
+
+      // Error haptic
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
     } finally {
-      setIsLoadingHistory(false);
+      // Smooth transition with slight delay
+      setTimeout(() => {
+        setIsLoadingHistory(false);
+
+        // Fade in the messages
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        }).start();
+      }, 300);
     }
   };
 
@@ -647,36 +676,38 @@ Keep it motivating and practical:`;
       </View>
 
       {/* Messages */}
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.messagesContainer}
-        contentContainerStyle={styles.messagesContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {dateGroups.map((group) => (
-          <View key={group.date}>
-            {/* Date Separator */}
-            <View style={styles.dateSeparator}>
-              <View style={styles.dateLine} />
-              <Text style={styles.dateLabel}>{group.label}</Text>
-              <View style={styles.dateLine} />
+      <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.messagesContainer}
+          contentContainerStyle={styles.messagesContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {dateGroups.map((group) => (
+            <View key={group.date}>
+              {/* Date Separator */}
+              <View style={styles.dateSeparator}>
+                <View style={styles.dateLine} />
+                <Text style={styles.dateLabel}>{group.label}</Text>
+                <View style={styles.dateLine} />
+              </View>
+
+              {/* Messages in this date group */}
+              {group.messages.map((message, index) => (
+                <MessageBubble
+                  key={message.id}
+                  message={message}
+                  isLast={index === group.messages.length - 1}
+                  formatTime={formatTime}
+                />
+              ))}
             </View>
+          ))}
 
-            {/* Messages in this date group */}
-            {group.messages.map((message, index) => (
-              <MessageBubble
-                key={message.id}
-                message={message}
-                isLast={index === group.messages.length - 1}
-                formatTime={formatTime}
-              />
-            ))}
-          </View>
-        ))}
-
-        {/* Typing Indicator */}
-        {isLoading && <TypingIndicator />}
-      </ScrollView>
+          {/* Typing Indicator */}
+          {isLoading && <TypingIndicator />}
+        </ScrollView>
+      </Animated.View>
 
       {/* Quick Action Chips */}
       {!isLoading && !selectedImage && (
